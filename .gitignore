@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# 环境变量
+.env
+backend/.env
+```

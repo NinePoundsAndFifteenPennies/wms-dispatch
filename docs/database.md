@@ -4,6 +4,15 @@
 ## 📊 数据库架构 V2 
 
 ---
+## 资源设计：
+所有图片等资源都放在根目录resources/下，按类型分子目录：
+
+```resources/
+  ├── warehouse_covers/   // 仓库封面图
+  ├── product_images/     // 产品图片
+  ├── user_avatars/      // 用户头像
+  └── other/             // 其他资源,后续自定义
+```
 
 ### **1️⃣ users（用户表）**
 系统中的所有用户（管理员、调度员、工人）

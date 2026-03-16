@@ -207,6 +207,7 @@ npm run dev
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/wms
 QWEN_API_KEY=your_qwen_api_key
+SECRET_KEY=your_secret_key
 ```
 
 ---
