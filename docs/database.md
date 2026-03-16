@@ -38,7 +38,7 @@ resources/
 
 **关键约束**：
 - `role` 通过 CHECK 约束限制为 `'admin'`、`'dispatcher'`、`'worker'`
-- `warehouse_id` 对于 dispatcher 和 worker 角色为必填（应用层校验）
+- `CHECK (role = 'admin' OR warehouse_id IS NOT NULL)` — 调度员和工人必须绑定仓库
 - 管理员账号不可被禁用（由业务逻辑层保证）
 
 **设计说明**：
@@ -205,7 +205,7 @@ resources/
 |------|------|------|------|
 | id | SERIAL | PK | 工作单ID |
 | order_id | INTEGER | FK → orders.id, NOT NULL | 关联的业务订单 |
-| worker_id | INTEGER | FK → users.id, NOT NULL | 分配的工人（users 表中 role=worker） |
+| worker_id | INTEGER | FK → users.id, NOT NULL | 分配的工人（应用层校验 role=worker） |
 | dispatcher_id | INTEGER | FK → users.id, NOT NULL | 调度员（谁分配的） |
 | warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 操作的仓库 |
 | task_type | VARCHAR(16) | NOT NULL | picking / staging / shipping |
