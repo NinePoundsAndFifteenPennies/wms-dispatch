@@ -148,12 +148,14 @@
 ### AI Agent 模块
 
 #### 工单调度 Agent
-- 接收调度员自然语言输入，通过 SQL Tool 查询当前订单状态和工人空闲情况。
+- 接收调度员自然语言输入，通过**只读 SQL Tool** 查询当前订单状态和工人空闲情况。
 - 调用技能匹配规则，筛选符合商品所需技能的可用工人。
 - 调用 LLM 综合生成工单分配方案，附带分配理由，供调度员确认。
 
+> ⚠️ **安全约束**：Agent 只拥有数据库的**只读访问权限**，所有写操作（创建工单、更新状态等）必须通过应用 API 层执行，确保经过完整的权限检查和业务规则校验。
+
 #### 跨仓调拨 Agent
-- 接收调度员自然语言输入，通过 SQL Tool 查询所有仓库相关商品的库存余量。
+- 接收调度员自然语言输入，通过**只读 SQL Tool** 查询所有仓库相关商品的库存余量。
 - 调用 LLM 综合分析，给出最优调拨来源和数量建议，生成调拨申请单。
 
 ---
@@ -192,9 +194,14 @@ cd wms-dispatch
 cp .env.example .env
 # 填写 .env 中的数据库连接和 API Key
 
+# 启动数据库（需要 Docker）
+docker compose up -d
+
 # 后端
+cd backend
 pip install -r requirements.txt
-python manage.py db upgrade
+alembic upgrade head      # 执行数据库迁移
+uvicorn main:app --reload # 启动开发服务器
 
 # 前端
 cd frontend
@@ -204,11 +211,15 @@ npm run dev
 
 ### 环境变量
 
+参见 [.env.example](./.env.example)：
+
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/wms
 QWEN_API_KEY=your_qwen_api_key
 SECRET_KEY=your_secret_key
 ```
+
+> ⚠️ **安全提示**：`SECRET_KEY` 应使用足够长度的随机字符串（建议 ≥ 32 位），不要使用默认值或弱密钥。
 
 ---
 
@@ -230,13 +241,30 @@ wms-dispatch/
 │   │   ├── views/          # 页面组件
 │   │   ├── components/     # 公共组件
 │   │   └── stores/         # Pinia 状态管理
-│   └── vite.config.ts
-├── database/
-│   └── migrations/         # 数据库迁移文件
-├── DATABASE.md             # 数据库设计文档
+│   └── vite.config.js
+├── docs/
+│   ├── database.md             # 数据库设计文档
+│   └── development-plan.md     # 第一步开发计划
+├── docker-compose.yml
 ├── .env.example
 └── README.md
 ```
+
+---
+
+## 安全设计
+
+| 安全领域 | 措施 |
+|----------|------|
+| 身份认证 | JWT Token（python-jose / bcrypt），Token 有效期控制 |
+| 权限控制 | 基于角色的访问控制（RBAC），API 层按角色拦截请求 |
+| 密码安全 | bcrypt 哈希存储，禁止明文传输和存储 |
+| AI Agent 隔离 | Agent SQL Tool 仅限只读事务，写操作必须走应用 API |
+| 输入校验 | Pydantic Schema 校验所有 API 入参，防止注入和非法数据 |
+| 审计日志 | 关键操作写入 audit_logs 表，不可修改、不可删除 |
+| 通信安全 | 生产环境强制 HTTPS，WebSocket 使用 WSS |
+
+> 详细数据库安全设计见 [database.md](./docs/database.md) 中的「安全设计备注」。
 
 ---
 
