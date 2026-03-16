@@ -213,9 +213,9 @@ product_id=100, skill_tag_id=5  -- 易碎产品需要特殊包装
 | id | SERIAL | PK | 库存记录ID |
 | warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 仓库ID |
 | product_id | INTEGER | FK → products.id, NOT NULL | 产品ID |
-| qty_available | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | 可用数量（立即可发） |
-| qty_reserved | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | 已预留数量（已分配待发） |
-| qty_threshold | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | 库存阈值（预警点） |
+| qty_available | INTEGER | NOT NULL, DEFAULT 0, CHECK (qty_available >= 0) | 可用数量（立即可发） |
+| qty_reserved | INTEGER | NOT NULL, DEFAULT 0, CHECK (qty_reserved >= 0) | 已预留数量（已分配待发） |
+| qty_threshold | INTEGER | NOT NULL, DEFAULT 0, CHECK (qty_threshold >= 0) | 库存阈值（预警点） |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | 最后更新时间 |
 
 **约束**：`UNIQUE (warehouse_id, product_id)` — 每个仓库每种产品只有一条库存记录
@@ -265,8 +265,8 @@ product_id=100, skill_tag_id=5  -- 易碎产品需要特殊包装
 | id | SERIAL | PK | 明细ID |
 | order_id | INTEGER | FK → orders.id, NOT NULL | 所属订单 |
 | product_id | INTEGER | FK → products.id, NOT NULL | 产品ID |
-| qty | INTEGER | NOT NULL, CHECK > 0 | 数量 |
-| unit_price | DECIMAL(10,2) | NOT NULL, CHECK >= 0 | 单价 |
+| qty | INTEGER | NOT NULL, CHECK (qty > 0) | 数量 |
+| unit_price | DECIMAL(10,2) | NOT NULL, CHECK (unit_price >= 0) | 单价 |
 
 **计算**：`line_amount = qty × unit_price`
 
@@ -336,7 +336,7 @@ product_id=100, skill_tag_id=5  -- 易碎产品需要特殊包装
 | initiating_warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 发起调拨的仓库（可能 ≠ from） |
 | requested_by | INTEGER | FK → users.id, NOT NULL | 申请人 |
 | approved_by | INTEGER | FK → users.id | 批准人（审批后填写） |
-| qty | INTEGER | NOT NULL, CHECK > 0 | 调拨数量 |
+| qty | INTEGER | NOT NULL, CHECK (qty > 0) | 调拨数量 |
 | status | VARCHAR(16) | NOT NULL, DEFAULT 'pending' | pending / approved / rejected / executed / cancelled |
 | description | TEXT | | 调拨原因/说明 |
 | rejection_reason | TEXT | | 驳回原因（驳回时填写） |
