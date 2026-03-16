@@ -32,10 +32,10 @@
 
 #### 1.2 数据库迁移
 - [ ] 根据 `docs/database.md` 创建 Alembic 初始迁移文件
-- [ ] 第一批表：`users`、`customers`、`warehouses`、`workers`、`skill_tag_definitions`、`worker_skills`
+- [ ] 第一批表：`users`、`customers`、`warehouses`、`skill_tag_definitions`、`user_skills`
 - [ ] 第二批表：`products`、`product_required_skills`、`inventory`
 - [ ] 第三批表：`orders`、`order_items`、`work_orders`、`work_order_notes`
-- [ ] 第四批表：`transfer_orders`、`notifications`、`reports`、`audit_logs`
+- [ ] 第四批表：`transfer_orders`、`notifications`、`reports`
 - [ ] 编写种子数据脚本（初始管理员账号、示例技能标签）
 
 #### 1.3 前端项目初始化
@@ -84,10 +84,14 @@
 - [ ] 商品关联所需技能（多选）
 - [ ] 前端商品管理页面
 
-#### 3.4 工人信息管理
-- [ ] 创建用户时若角色为 worker，自动创建 workers 记录
-- [ ] 工人关联仓库、技能标签
-- [ ] 前端工人信息编辑（在用户管理页面内嵌）
+#### 3.4 客户管理
+- [ ] `CRUD /api/admin/customers` — 客户增删改查
+- [ ] 前端客户管理页面
+
+#### 3.5 人员仓库与技能绑定
+- [ ] 创建用户时若角色为 dispatcher 或 worker，需指定所属仓库
+- [ ] 工人角色关联技能标签
+- [ ] 前端用户编辑页面中嵌入仓库选择和技能标签选择
 
 ---
 
@@ -126,7 +130,6 @@
 ### Sprint 5：集成与验收（约 2 天）
 
 - [ ] 端到端流程联调：创建订单 → 创建工单 → 工人执行 → 完成
-- [ ] 审计日志写入验证（关键操作自动记录）
 - [ ] API 错误处理与边界情况测试
 - [ ] 基础 UI 走查与修复
 - [ ] 编写 API 文档（利用 FastAPI 自动生成的 Swagger UI）
