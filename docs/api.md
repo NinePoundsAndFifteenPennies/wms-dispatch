@@ -18,8 +18,12 @@
 
 ```json
 {
-  "service": "wms-dispatch-backend",
-  "docs": "/docs"
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "service": "wms-dispatch-backend",
+    "docs": "/docs"
+  }
 }
 ```
 
@@ -29,6 +33,10 @@
 
 ```json
 {
-  "status": "ok"
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "status": "ok"
+  }
 }
 ```

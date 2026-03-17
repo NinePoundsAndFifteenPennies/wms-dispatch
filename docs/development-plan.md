@@ -24,11 +24,11 @@
 ### Sprint 1：项目基础搭建（约 3 天）
 
 #### 1.1 后端项目初始化
-- [ ] 建立 FastAPI 项目结构（按 `backend/modules/` 分模块）
-- [ ] 配置 SQLAlchemy 异步引擎 + Alembic 迁移框架
-- [ ] 实现 `.env` 配置加载（`python-dotenv`）
-- [ ] 实现全局异常处理中间件
-- [ ] 实现统一的 API 响应格式（`{ code, message, data }`）
+- [x] 建立 FastAPI 项目结构（按 `backend/modules/` 分模块）
+- [x] 配置 SQLAlchemy 异步引擎 + Alembic 迁移框架
+- [x] 实现 `.env` 配置加载（`python-dotenv`）
+- [x] 实现全局异常处理中间件
+- [x] 实现统一的 API 响应格式（`{ code, message, data }`）
 
 #### 1.2 数据库迁移
 - [ ] 根据 `docs/database.md` 创建 Alembic 初始迁移文件
