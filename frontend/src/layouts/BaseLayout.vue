@@ -22,6 +22,10 @@
           <el-icon class="menu-icon"><List /></el-icon>
           工单执行
         </el-menu-item>
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/users">
+          <el-icon class="menu-icon"><User /></el-icon>
+          用户管理
+        </el-menu-item>
       </el-menu>
 
       <div class="status-panel">
@@ -47,8 +51,9 @@
           </el-button>
           <div class="operator">
             <el-icon><UserFilled /></el-icon>
-            ADMIN
+            {{ authStore.currentUser?.username || 'UNKNOWN' }}
           </div>
+          <el-button type="danger" plain @click="logout">退出</el-button>
         </div>
       </el-header>
       <el-main class="layout-main">
@@ -62,10 +67,13 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { Bell, Connection, House, List, Tickets, UserFilled } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Bell, Connection, House, List, Tickets, User, UserFilled } from '@element-plus/icons-vue'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
 const activePath = computed(() => route.path)
 
@@ -73,9 +81,15 @@ const titleMap = {
   '/': '控制台',
   '/orders': '订单管理',
   '/work-orders': '工单管理',
+  '/users': '用户管理',
 }
 
 const pageTitle = computed(() => titleMap[route.path] || 'WMS Dispatch')
+
+function logout() {
+  authStore.clearToken()
+  router.push('/login')
+}
 </script>
 
 <style scoped>

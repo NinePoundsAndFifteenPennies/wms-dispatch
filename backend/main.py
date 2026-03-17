@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 
 from api.router import router as api_router
+from modules.auth.dependencies import inject_current_user_from_token
 from modules.shared.response import failure, success
 
 app = FastAPI(
@@ -24,6 +25,11 @@ async def exception_middleware(request: Request, call_next):
     except Exception:
         logger.error('Unhandled server error', exc_info=True)
         return failure(message='internal server error', code=500)
+
+
+@app.middleware('http')
+async def jwt_middleware(request: Request, call_next):
+    return await inject_current_user_from_token(request, call_next)
 
 
 @app.exception_handler(HTTPException)

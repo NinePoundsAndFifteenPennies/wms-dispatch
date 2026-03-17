@@ -8,48 +8,76 @@
 
     <el-card class="login-card">
       <h2>登录系统</h2>
-      <el-form @submit.prevent>
-        <el-form-item label="账号">
+      <el-form ref="formRef" :model="form" :rules="rules" @submit.prevent>
+        <el-form-item label="账号" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" />
         </el-form-item>
-        <el-form-item label="密码">
+        <el-form-item label="密码" prop="password">
           <el-input
             v-model="form.password"
             type="password"
             show-password
             placeholder="请输入密码"
+            @keyup.enter="handleLogin"
           />
         </el-form-item>
-        <el-button type="primary" class="submit" @click="mockLogin">登录</el-button>
+        <el-alert v-if="errorMessage" type="error" :title="errorMessage" show-icon :closable="false" />
+        <el-button type="primary" class="submit" :loading="loading" @click="handleLogin">登录</el-button>
       </el-form>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore, getDefaultPathByRole } from '../stores/auth'
+import http from '../api/http'
 
 const form = reactive({
   username: '',
   password: '',
 })
+const rules = {
+  username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+}
+const formRef = ref()
+const loading = ref(false)
+const errorMessage = ref('')
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-function mockLogin() {
-  if (!form.username || !form.password) {
-    ElMessage.warning('请输入账号和密码')
-    return
-  }
+async function handleLogin() {
+  errorMessage.value = ''
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
 
-  authStore.setToken('demo-token')
-  const redirect = route.query.redirect || '/'
-  router.push(String(redirect))
+  loading.value = true
+  try {
+    const response = await http.post('/auth/login', form)
+    const token = response.data?.data?.token
+    const user = response.data?.data?.user
+    if (!token || !user) {
+      throw new Error('登录响应无效')
+    }
+
+    authStore.setSession(token, user)
+    ElMessage.success('登录成功')
+    const redirect = route.query.redirect
+    if (typeof redirect === 'string' && redirect.startsWith('/')) {
+      await router.push(redirect)
+      return
+    }
+    await router.push(getDefaultPathByRole(user.role))
+  } catch (error) {
+    errorMessage.value = error.response?.data?.message || error.message || '登录失败，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
