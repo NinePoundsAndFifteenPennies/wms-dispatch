@@ -45,11 +45,11 @@
 - [x] 实现 `GET /api/auth/me`（获取当前登录用户信息）
 
 #### 2.2 用户管理 API（管理员）
-- [ ] `GET /api/admin/users` — 用户列表（分页、搜索）
-- [ ] `POST /api/admin/users` — 创建用户
-- [ ] `PUT /api/admin/users/{id}` — 编辑用户
-- [ ] `PATCH /api/admin/users/{id}/status` — 启用/禁用用户
-- [ ] 业务规则：管理员账号不可被禁用
+- [x] `GET /api/admin/users` — 用户列表（分页、搜索）
+- [x] `POST /api/admin/users` — 创建用户
+- [x] `PUT /api/admin/users/{id}` — 编辑用户
+- [x] `PATCH /api/admin/users/{id}/status` — 启用/禁用用户
+- [x] 业务规则：管理员账号不可被禁用
 
 #### 2.3 前端认证页面
 - [x] 登录页（表单验证、错误提示、Token 存储）
@@ -67,10 +67,6 @@
 - [ ] `CRUD /api/admin/warehouses` — 仓库增删改查
 - [ ] 前端仓库管理页面（表格 + 表单弹窗）
 - [ ] 集成 Nominatim 地理编码（地址 → 经纬度）
-
-#### 3.2 技能标签管理
-- [ ] `CRUD /api/admin/skills` — 技能标签增删改查
-- [ ] 前端技能标签管理页面
 
 #### 3.3 商品管理
 - [ ] `CRUD /api/admin/products` — 商品增删改查

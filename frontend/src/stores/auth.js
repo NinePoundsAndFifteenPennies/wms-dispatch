@@ -38,6 +38,8 @@ export const useAuthStore = defineStore('auth', () => {
     profileLoaded.value = false
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(USER_KEY)
   }
 
   function setCurrentUser(user) {

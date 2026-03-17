@@ -1,0 +1,21 @@
+import http from './http'
+
+export const adminApi = {
+  getUsers(params) {
+    return http.get('/admin/users', { params })
+  },
+  
+  createUser(data) {
+    return http.post('/admin/users', data)
+  },
+  
+  updateUser(id, data) {
+    return http.put(`/admin/users/${id}`, data)
+  },
+  
+  updateUserStatus(id, isActive) {
+    return http.patch(`/admin/users/${id}/status`, { is_active: isActive })  },
+  getWarehouses() {
+    return http.get('/admin/warehouses')
+  }
+}

@@ -47,13 +47,25 @@
         <div class="header-actions">
           <el-button type="warning" class="action-btn" plain>
             <el-icon><Bell /></el-icon>
-            待办 6
+            待办
           </el-button>
-          <div class="operator">
-            <el-icon><UserFilled /></el-icon>
-            {{ authStore.currentUser?.username || 'UNKNOWN' }}
-          </div>
-          <el-button type="danger" class="action-btn" plain @click="logout">退出</el-button>
+          
+          <el-dropdown trigger="click" @command="handleCommand">
+            <div class="operator">
+              <el-icon><UserFilled /></el-icon>
+              <div class="user-info">
+                <span class="user-name">{{ authStore.currentUser?.username || '未知用户' }}</span>
+                <span class="user-role">{{ formatRole(authStore.currentUser?.role) }}</span>
+              </div>
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                <el-dropdown-item divided command="logout" class="text-danger">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
       <el-main class="layout-main">
@@ -68,7 +80,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Connection, House, List, Tickets, User, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, House, List, Tickets, User, UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/http'
 
@@ -101,6 +113,23 @@ const statusClass = computed(() => ({
   'status-online': backendStatus.value === 'online',
   'status-offline': backendStatus.value === 'offline',
 }))
+
+function formatRole(role) {
+  const roles = {
+    admin: '系统管理员',
+    dispatcher: '调度员',
+    worker: '库房工人'
+  }
+  return roles[role] || role || '未知角色'
+}
+
+function handleCommand(command) {
+  if (command === 'logout') {
+    logout()
+  } else if (command === 'profile') {
+    // router.push('/profile')
+  }
+}
 
 function logout() {
   authStore.clearToken()
@@ -288,19 +317,43 @@ onUnmounted(() => {
 }
 
 .operator {
-  min-width: 82px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
-  text-align: center;
+  gap: 8px;
+  padding: 6px 12px;
+  text-align: left;
   border-radius: 10px;
+  border: 1px solid #d8e0ea;
+  background: #fdfdfd;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.operator:hover {
+  background: #f7f9fc;
+  border-color: #c5d0dc;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.user-name {
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-strong);
-  border: 1px solid #f8d7b4;
-  background: #fff3e7;
+}
+
+.user-role {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.text-danger {
+  color: #e05353;
 }
 
 .layout-main {
