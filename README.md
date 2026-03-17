@@ -181,6 +181,7 @@
 | 通知推送 | WebSocket / Server-Sent Events |
 
 > 详细数据库设计见 [database.md](./docs/database.md)。
+> API 文档见 [api.md](./docs/api.md)。
 
 ---
 
@@ -209,6 +210,7 @@ cd backend
 pip install -r requirements.txt
 alembic upgrade head      # 执行数据库迁移
 uvicorn main:app --reload # 启动开发服务器
+# Swagger 文档: http://127.0.0.1:8000/docs
 
 # 前端
 cd frontend
@@ -239,9 +241,9 @@ wms-dispatch/
 │   │   ├── admin/          # 管理员模块
 │   │   ├── dispatcher/     # 调度员模块
 │   │   ├── worker/         # 工人模块
-│   │   └── agent/          # AI Agent 模块
-│   ├── shared/             # 公共工具、中间件、依赖注入
-│   ├── scheduler/          # 定时任务（告警检测）
+│   │   ├── agent/          # AI Agent 模块
+│   │   └── shared/         # 公共模块
+│   ├── api/                # API 路由
 │   └── main.py
 ├── frontend/
 │   ├── src/
@@ -251,7 +253,8 @@ wms-dispatch/
 │   └── vite.config.js
 ├── docs/
 │   ├── database.md             # 数据库设计文档
-│   └── development-plan.md     # 第一步开发计划
+│   ├── development-plan.md     # 第一步开发计划
+│   └── api.md                  # API 接口文档
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
