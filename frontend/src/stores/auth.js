@@ -66,6 +66,30 @@ export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY) || ''
 }
 
+function decodeJwtPayload(token) {
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
+
+export function isTokenExpired(token = getAuthToken()) {
+  if (!token) return true
+
+  const payload = decodeJwtPayload(token)
+  if (!payload || typeof payload.exp !== 'number') {
+    return true
+  }
+
+  return Date.now() >= payload.exp * 1000
+}
+
 export function getDefaultPathByRole(role) {
   if (role === 'admin') {
     return '/users'

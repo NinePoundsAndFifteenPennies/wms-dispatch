@@ -5,8 +5,8 @@ import OrdersView from '../views/OrdersView.vue'
 import WorkOrdersView from '../views/WorkOrdersView.vue'
 import LoginView from '../views/LoginView.vue'
 import UsersView from '../views/UsersView.vue'
-import { useAuthStore, getDefaultPathByRole } from '../stores/auth'
-import http from '../api/http'
+import { useAuthStore, getDefaultPathByRole, isTokenExpired } from '../stores/auth'
+import { authApi } from '../api/auth'
 
 function handleDisabledUser(authStore, redirectPath) {
   authStore.clearToken()
@@ -60,6 +60,13 @@ const router = createRouter({
 router.beforeEach((to) => {
   const authStore = useAuthStore()
 
+  if (authStore.isAuthenticated && isTokenExpired(authStore.token)) {
+    authStore.clearToken()
+    if (!to.meta.public) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
+
   if (to.meta.public) {
     if (to.name === 'login' && authStore.isAuthenticated && authStore.currentUser?.role) {
       return { path: getDefaultPathByRole(authStore.currentUser.role) }
@@ -82,8 +89,8 @@ router.beforeEach((to) => {
     return true
   }
 
-  return http
-    .get('/auth/me')
+  return authApi
+    .getMe()
     .then((response) => {
       const user = response.data?.data
       if (!user?.is_active) {

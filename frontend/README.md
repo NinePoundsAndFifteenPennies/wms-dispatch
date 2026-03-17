@@ -1,72 +1,82 @@
-# WMS Dispatch Frontend
+﻿# WMS Dispatch Frontend
 
-WMS Dispatch 前端基于 Vue 3 + Vite，已完成第一阶段前端初始化：
+WMS Dispatch Frontend is a modern Vue 3 application built with Vite for managing and dispatching warehouse operations, including orders, inventory, and cross-warehouse coordination.
 
-- 路由：Vue Router 4
-- 状态管理：Pinia
-- UI 框架：Element Plus
-- HTTP：Axios（统一鉴权 Header、统一错误提示）
-- 基础布局：侧边栏 + 顶部导航栏 + 内容区
+## 🚀 Tech Stack
 
-## 环境要求
+- **Framework**: Vue 3 (Composition API, <script setup>)
+- **Build Tool**: Vite
+- **Routing**: Vue Router 4
+- **State Management**: Pinia
+- **UI Library**: Element Plus
+- **HTTP Client**: Axios (with centralized uthApi abstraction and interceptors)
+
+## 📁 Project Structure
+
+`	ext
+src/
+  ├── api/              # API request abstractions (e.g., authApi) and Axios instance
+  ├── assets/           # Static assets (images, logos, etc.)
+  ├── layouts/          # Page layouts (e.g., BaseLayout with Sidebar and Header)
+  ├── router/           # Application routing and navigation guards (auth requirements, token checking)
+  ├── stores/           # Pinia stores (auth store, JWT handling)
+  ├── views/            # Main page views
+  │   ├── LoginView.vue        # Login page with glassmorphism UI
+  │   ├── DashboardView.vue    # Dashboard summary
+  │   ├── OrdersView.vue       # Order management
+  │   ├── WorkOrdersView.vue   # Dispatching work orders
+  │   └── UsersView.vue        # User & permissions management
+  ├── App.vue           # Root component
+  ├── main.js           # App entry point (mounting Vue, Pinia, Router, Element Plus)
+  └── style.css         # Global CSS variables and base styles
+`
+
+## ⚙️ Prerequisites
 
 - Node.js 18+
 - npm 9+
 
-## 快速启动
+## 🛠️ Quick Start
 
-```bash
+`ash
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
-```
+`
 
-默认访问地址：`http://localhost:5173`
+Default development address: http://localhost:5173
 
-## 后端联调说明
+## 🔗 Backend Integration
 
-后端服务运行在 `http://localhost:8000`。
+The backend service runs on http://localhost:8000.
 
-开发环境通过 Vite 代理将 `/api` 请求转发到后端：
+In the development environment, Vite automatically proxies /api requests to the local backend.
 
-- 前端请求：`/api/...`
-- 实际转发：`http://localhost:8000/api/...`
+- Frontend makes a request to: /api/...
+- Real request targeted to: http://localhost:8000/api/...
 
-如需直连其它地址，可设置环境变量 `VITE_API_BASE_URL`。
+If you need to connect to a different backend server URL, you can configure the environment variable:
+VITE_API_BASE_URL in .env.
 
-## 目录结构
+## 📦 Building for Production
 
-```text
-src/
-	api/
-		http.js              # Axios 实例与拦截器
-	layouts/
-		BaseLayout.vue       # 基础布局（侧边栏 + 顶栏 + 内容区）
-	router/
-		index.js             # 路由配置与登录守卫
-	stores/
-		auth.js              # Pinia 认证状态（Token 持久化）
-	views/
-		LoginView.vue        # 登录页（当前为示例登录）
-		DashboardView.vue    # 控制台占位页
-		OrdersView.vue       # 订单页占位
-		WorkOrdersView.vue   # 工单页占位
-	App.vue                # 应用根组件
-	main.js                # 应用入口（挂载 Pinia/Router/Element Plus）
-	style.css              # 全局样式
-```
+`ash
+# Build production bundle
+npm run build
 
-## Axios 规范
+# Preview production build locally
+npm run preview
+`
 
-`src/api/http.js` 已完成以下约定：
+## 📝 Coding Standards
 
-- 请求拦截器自动注入 `Authorization: Bearer <token>`
-- 响应错误统一弹出 Element Plus 错误提示
-- 默认 `baseURL`：`/api`
+### Axios & APIs
+- Service requests should be maintained within the src/api folder rather than firing them straight from components.
+- The http.js global interceptor handles attaching the JWT session token (Authorization: Bearer <token>).
+- Expired or invalid tokens are handled gracefully by outer/index.js interceptors redirecting safely back to /login.
 
-## 可用脚本
-
-```bash
-npm run dev      # 本地开发
-npm run build    # 生产构建
-npm run preview  # 预览构建产物
-```
+### Pinia State
+- src/stores/auth.js maintains the authentication context.
+- Provides getters to evaluate required permissions using hasRole().
