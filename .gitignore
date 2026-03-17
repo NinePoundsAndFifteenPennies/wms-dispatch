@@ -213,4 +213,7 @@ frontend/dist/
 # 环境变量
 .env
 backend/.env
+
+# 分支切换脚本
+scripts
 ```
