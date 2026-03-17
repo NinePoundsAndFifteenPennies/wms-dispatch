@@ -25,6 +25,14 @@
 
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="users" stripe>
+        <el-table-column label="头像" width="84">
+          <template #default="{ row }">
+            <el-avatar v-if="row.avatar" :src="row.avatar" :size="36" />
+            <el-avatar v-else :size="36">
+              <el-icon><UserFilled /></el-icon>
+            </el-avatar>
+          </template>
+        </el-table-column>
         <el-table-column prop="username" label="用户名" min-width="130" />
         <el-table-column prop="email" label="邮箱" min-width="180" />
         <el-table-column prop="role" label="角色" width="120" />
@@ -39,8 +47,9 @@
             <span v-else style="color: #909399; font-size: 13px;">始终启用</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="170">
           <template #default="{ row }">
+            <el-button type="success" link @click="openDetailDialog(row)">详情</el-button>
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
           </template>
         </el-table-column>
@@ -104,13 +113,78 @@
         <el-button type="primary" @click="saveUser" :loading="saving">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="detailVisible" title="用户详情" width="720px">
+      <div class="detail-grid">
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <span>基础信息</span>
+          </template>
+          <el-form ref="detailFormRef" :model="detailForm" :rules="detailRules" label-width="98px">
+            <el-form-item label="头像">
+              <div class="avatar-inline">
+                <el-avatar v-if="detailForm.avatar" :src="detailForm.avatar" :size="54" />
+                <el-avatar v-else :size="54">
+                  <el-icon><UserFilled /></el-icon>
+                </el-avatar>
+                <span class="placeholder-note">头像编辑功能待开放</span>
+              </div>
+            </el-form-item>
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="detailForm.username" />
+            </el-form-item>
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="detailForm.email" />
+            </el-form-item>
+            <el-form-item label="角色" prop="role">
+              <el-select v-model="detailForm.role" style="width: 100%">
+                <el-option label="admin" value="admin" />
+                <el-option label="dispatcher" value="dispatcher" />
+                <el-option label="worker" value="worker" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="仓库" prop="warehouse_id" v-if="detailForm.role !== 'admin'">
+              <el-select v-model="detailForm.warehouse_id" placeholder="选择仓库" style="width: 100%" teleported="false">
+                <el-option v-for="wh in warehouses" :key="wh.id" :label="wh.name" :value="wh.id" />
+              </el-select>
+            </el-form-item>
+            <template v-if="detailForm.role === 'worker'">
+              <el-form-item label="分拣技能" prop="skill_picking">
+                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" />
+              </el-form-item>
+              <el-form-item label="备货技能" prop="skill_staging">
+                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" />
+              </el-form-item>
+              <el-form-item label="发货技能" prop="skill_shipping">
+                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" />
+              </el-form-item>
+            </template>
+          </el-form>
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <span>个人资料（占位）</span>
+          </template>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="昵称">待实现</el-descriptions-item>
+            <el-descriptions-item label="手机号">待实现</el-descriptions-item>
+            <el-descriptions-item label="个人简介">待实现</el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </div>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Plus, Search, UserFilled } from '@element-plus/icons-vue'
 import { adminApi } from '../api/admin'
 
 const users = ref([])
@@ -126,7 +200,11 @@ const searchQuery = ref('')
 const dialogVisible = ref(false)
 const dialogMode = ref('create')
 const editingId = ref(null)
+const detailVisible = ref(false)
+const detailEditingId = ref(null)
+const detailSaving = ref(false)
 const formRef = ref()
+const detailFormRef = ref()
 const form = reactive({
   username: '',
   email: '',
@@ -136,6 +214,16 @@ const form = reactive({
   skill_picking: 0,
   skill_staging: 0,
   skill_shipping: 0,
+})
+const detailForm = reactive({
+  username: '',
+  email: '',
+  role: 'worker',
+  warehouse_id: null,
+  skill_picking: 0,
+  skill_staging: 0,
+  skill_shipping: 0,
+  avatar: '',
 })
 
 const rules = {
@@ -150,6 +238,27 @@ const rules = {
     {
       validator: (_, value, callback) => {
         if (form.role === 'admin' || value) {
+          callback()
+          return
+        }
+        callback(new Error('非管理员必须填写仓库'))
+      },
+      trigger: 'change',
+    },
+  ],
+}
+
+const detailRules = {
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] },
+  ],
+  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  warehouse_id: [
+    {
+      validator: (_, value, callback) => {
+        if (detailForm.role === 'admin' || value) {
           callback()
           return
         }
@@ -245,6 +354,46 @@ function openEditDialog(row) {
   if (formRef.value) formRef.value.clearValidate()
 }
 
+function openDetailDialog(row) {
+  detailEditingId.value = row.id
+  detailForm.username = row.username
+  detailForm.email = row.email
+  detailForm.role = row.role
+  detailForm.warehouse_id = row.role === 'admin' ? null : (row.warehouse_id || null)
+  detailForm.skill_picking = row.skill_picking || 0
+  detailForm.skill_staging = row.skill_staging || 0
+  detailForm.skill_shipping = row.skill_shipping || 0
+  detailForm.avatar = row.avatar || ''
+  detailVisible.value = true
+  if (detailFormRef.value) detailFormRef.value.clearValidate()
+}
+
+async function saveDetail() {
+  const valid = await detailFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  detailSaving.value = true
+  try {
+    const payload = {
+      username: detailForm.username,
+      email: detailForm.email,
+      role: detailForm.role,
+      warehouse_id: detailForm.role === 'admin' ? null : detailForm.warehouse_id,
+      skill_picking: detailForm.role === 'worker' ? detailForm.skill_picking : 0,
+      skill_staging: detailForm.role === 'worker' ? detailForm.skill_staging : 0,
+      skill_shipping: detailForm.role === 'worker' ? detailForm.skill_shipping : 0,
+    }
+    await adminApi.updateUser(detailEditingId.value, payload)
+    ElMessage.success('详情保存成功')
+    detailVisible.value = false
+    fetchUsers()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '保存失败')
+  } finally {
+    detailSaving.value = false
+  }
+}
+
 async function onStatusChange(row, targetStatus) {
   try {
     await adminApi.updateUserStatus(row.id, targetStatus)
@@ -320,11 +469,36 @@ p {
   border-radius: 12px;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.detail-card {
+  border-radius: 12px;
+}
+
+.avatar-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.placeholder-note {
+  color: #64748b;
+  font-size: 13px;
+}
+
 @media (max-width: 860px) {
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

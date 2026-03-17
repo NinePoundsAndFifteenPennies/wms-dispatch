@@ -1,12 +1,24 @@
 ﻿from typing import List, Optional
 import bcrypt
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.customer import Customer
+from models.product import Product
 from models.user import User
 from models.warehouse import Warehouse
-from modules.admin.schemas import UserCreate, UserUpdate, UserStatusUpdate
+from modules.admin.schemas import (
+    CustomerCreate,
+    CustomerUpdate,
+    ProductCreate,
+    ProductUpdate,
+    UserCreate,
+    UserStatusUpdate,
+    UserUpdate,
+)
+from modules.shared.storage import save_image_file
+from modules.shared.storage import delete_resource_file_by_url
 
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode("utf-8")
@@ -113,4 +125,238 @@ class AdminService:
     async def list_warehouses(self) -> List[Warehouse]:
         result = await self.session.execute(select(Warehouse).order_by(Warehouse.id.asc()))
         return result.scalars().all()
+
+    async def list_customers(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
+        stmt = select(Customer)
+        if search:
+            stmt = stmt.where(
+                or_(
+                    Customer.name.ilike(f"%{search}%"),
+                    Customer.contact.ilike(f"%{search}%"),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = await self.session.scalar(count_stmt)
+
+        stmt = stmt.order_by(Customer.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        return {"items": items, "total": total}
+
+    async def create_customer(self, customer_data: CustomerCreate) -> Customer:
+        customer = Customer(
+            name=customer_data.name,
+            contact=customer_data.contact,
+            address=customer_data.address,
+            description=customer_data.description,
+            is_active=True,
+        )
+        self.session.add(customer)
+        try:
+            await self.session.commit()
+            await self.session.refresh(customer)
+            return customer
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def update_customer(self, customer_id: int, customer_data: CustomerUpdate) -> Customer:
+        result = await self.session.execute(
+            select(Customer).where(Customer.id == customer_id)
+        )
+        customer = result.scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        update_data = customer_data.model_dump(exclude_unset=True)
+        for field_name, value in update_data.items():
+            setattr(customer, field_name, value)
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(customer)
+            return customer
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def delete_customer(self, customer_id: int) -> None:
+        result = await self.session.execute(select(Customer).where(Customer.id == customer_id))
+        customer = result.scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        customer.is_active = False
+        await self.session.commit()
+
+    async def update_customer_status(self, customer_id: int, is_active: bool) -> Customer:
+        result = await self.session.execute(select(Customer).where(Customer.id == customer_id))
+        customer = result.scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        customer.is_active = is_active
+        await self.session.commit()
+        await self.session.refresh(customer)
+        return customer
+
+    async def batch_delete_customers(self, ids: List[int]) -> int:
+        result = await self.session.execute(
+            select(Customer).where(Customer.id.in_(ids), Customer.is_active.is_(True))
+        )
+        customers = result.scalars().all()
+        if not customers:
+            return 0
+
+        for customer in customers:
+            customer.is_active = False
+        await self.session.commit()
+        return len(customers)
+
+    async def list_products(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
+        stmt = select(Product)
+        if search:
+            stmt = stmt.where(
+                or_(
+                    Product.sku.ilike(f"%{search}%"),
+                    Product.name.ilike(f"%{search}%"),
+                    Product.category.ilike(f"%{search}%"),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = await self.session.scalar(count_stmt)
+
+        stmt = stmt.order_by(Product.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        return {"items": items, "total": total}
+
+    async def create_product(self, product_data: ProductCreate) -> Product:
+        existing = await self.session.execute(select(Product).where(Product.sku == product_data.sku))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="SKU already exists")
+
+        product = Product(**product_data.model_dump())
+        self.session.add(product)
+        try:
+            await self.session.commit()
+            await self.session.refresh(product)
+            return product
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def update_product(self, product_id: int, product_data: ProductUpdate) -> Product:
+        result = await self.session.execute(
+            select(Product).where(Product.id == product_id)
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        update_data = product_data.model_dump(exclude_unset=True)
+        if "sku" in update_data and update_data["sku"] != product.sku:
+            existing = await self.session.execute(select(Product).where(Product.sku == update_data["sku"]))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="SKU already exists")
+
+        for field_name, value in update_data.items():
+            setattr(product, field_name, value)
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(product)
+            return product
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def delete_product(self, product_id: int) -> None:
+        result = await self.session.execute(select(Product).where(Product.id == product_id))
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        image_to_delete = product.cover_image
+        product.cover_image = None
+        product.is_active = False
+        await self.session.commit()
+        delete_resource_file_by_url(image_to_delete)
+
+    async def update_product_status(self, product_id: int, is_active: bool) -> Product:
+        result = await self.session.execute(select(Product).where(Product.id == product_id))
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        # Keep soft-delete semantics: disabling a product also removes its image reference and file.
+        if not is_active and product.cover_image:
+            image_to_delete = product.cover_image
+            product.cover_image = None
+            delete_resource_file_by_url(image_to_delete)
+
+        product.is_active = is_active
+        await self.session.commit()
+        await self.session.refresh(product)
+        return product
+
+    async def batch_delete_products(self, ids: List[int]) -> int:
+        result = await self.session.execute(
+            select(Product).where(Product.id.in_(ids), Product.is_active.is_(True))
+        )
+        products = result.scalars().all()
+        if not products:
+            return 0
+
+        for product in products:
+            product.is_active = False
+        await self.session.commit()
+        return len(products)
+
+    async def upload_product_image(self, product_id: int, image: UploadFile) -> Product:
+        result = await self.session.execute(
+            select(Product).where(Product.id == product_id)
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        old_image_path = product.cover_image
+        saved_path = await save_image_file(
+            upload_file=image,
+            bucket="product_images",
+            entity_prefix="product",
+            entity_id=product_id,
+        )
+        product.cover_image = saved_path
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(product)
+        except Exception as e:
+            await self.session.rollback()
+            delete_resource_file_by_url(saved_path)
+            raise HTTPException(status_code=400, detail=str(e))
+
+        if old_image_path and old_image_path != saved_path:
+            delete_resource_file_by_url(old_image_path)
+        return product
+
+    async def remove_product_image(self, product_id: int) -> Product:
+        result = await self.session.execute(
+            select(Product).where(Product.id == product_id)
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        old_image_path = product.cover_image
+        product.cover_image = None
+        await self.session.commit()
+        await self.session.refresh(product)
+
+        delete_resource_file_by_url(old_image_path)
+        return product
 

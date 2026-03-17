@@ -1,5 +1,7 @@
-﻿from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
+﻿from decimal import Decimal
+from typing import Optional, List
+
+from pydantic import BaseModel, EmailStr, Field
 
 class UserCreate(BaseModel):
     username: str
@@ -47,4 +49,90 @@ class WarehouseResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CustomerCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    contact: str = Field(min_length=1, max_length=128)
+    address: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    contact: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    address: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CustomerResponse(BaseModel):
+    id: int
+    name: str
+    contact: str
+    address: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class CustomerListResponse(BaseModel):
+    items: List[CustomerResponse]
+    total: int
+
+
+class ProductCreate(BaseModel):
+    sku: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    category: Optional[str] = Field(default=None, max_length=64)
+    unit_weight: Optional[Decimal] = None
+    unit_of_measure: str = Field(default="piece", min_length=1, max_length=16)
+    req_skill_picking: int = Field(default=0, ge=0)
+    req_skill_staging: int = Field(default=0, ge=0)
+    req_skill_shipping: int = Field(default=0, ge=0)
+    description: Optional[str] = None
+
+
+class ProductUpdate(BaseModel):
+    sku: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    category: Optional[str] = Field(default=None, max_length=64)
+    unit_weight: Optional[Decimal] = None
+    unit_of_measure: Optional[str] = Field(default=None, min_length=1, max_length=16)
+    req_skill_picking: Optional[int] = Field(default=None, ge=0)
+    req_skill_staging: Optional[int] = Field(default=None, ge=0)
+    req_skill_shipping: Optional[int] = Field(default=None, ge=0)
+    description: Optional[str] = None
+
+
+class ProductResponse(BaseModel):
+    id: int
+    sku: str
+    name: str
+    category: Optional[str] = None
+    unit_weight: Optional[Decimal] = None
+    unit_of_measure: str
+    req_skill_picking: int
+    req_skill_staging: int
+    req_skill_shipping: int
+    cover_image: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ProductListResponse(BaseModel):
+    items: List[ProductResponse]
+    total: int
+
+
+class BatchDeleteRequest(BaseModel):
+    ids: List[int] = Field(min_length=1)
+
+
+class ActiveStatusUpdate(BaseModel):
+    is_active: bool
 

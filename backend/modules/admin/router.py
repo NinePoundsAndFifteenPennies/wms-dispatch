@@ -1,8 +1,18 @@
 ﻿from typing import List, Optional
 
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from modules.admin.schemas import (
+    ActiveStatusUpdate,
+    BatchDeleteRequest,
+    CustomerCreate,
+    CustomerListResponse,
+    CustomerResponse,
+    CustomerUpdate,
+    ProductCreate,
+    ProductListResponse,
+    ProductResponse,
+    ProductUpdate,
     UserCreate, 
     UserUpdate, 
     UserStatusUpdate, 
@@ -16,6 +26,8 @@ from modules.admin.dependencies import get_admin_service
 router = APIRouter()
 users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
 warehouses_router = APIRouter(prefix="/admin/warehouses", tags=["Admin Warehouses"])
+customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"])
+products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"])
 
 @users_router.get("", response_model=UserListResponse)
 async def list_users(
@@ -54,6 +66,113 @@ async def update_user_status(
 async def list_warehouses(service: AdminService = Depends(get_admin_service)):
     return await service.list_warehouses()
 
+
+@customers_router.get("", response_model=CustomerListResponse)
+async def list_customers(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_customers(page=page, page_size=page_size, search=search)
+
+
+@customers_router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
+async def create_customer(customer_data: CustomerCreate, service: AdminService = Depends(get_admin_service)):
+    return await service.create_customer(customer_data)
+
+
+@customers_router.put("/{customer_id}", response_model=CustomerResponse)
+async def update_customer(
+    customer_id: int,
+    customer_data: CustomerUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_customer(customer_id, customer_data)
+
+
+@customers_router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_customer(customer_id: int, service: AdminService = Depends(get_admin_service)):
+    await service.delete_customer(customer_id)
+
+
+@customers_router.post("/batch-delete")
+async def batch_delete_customers(payload: BatchDeleteRequest, service: AdminService = Depends(get_admin_service)):
+    deleted = await service.batch_delete_customers(payload.ids)
+    return {"deleted": deleted}
+
+
+@customers_router.patch("/{customer_id}/status", response_model=CustomerResponse)
+async def update_customer_status(
+    customer_id: int,
+    status_update: ActiveStatusUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_customer_status(customer_id, status_update.is_active)
+
+
+@products_router.get("", response_model=ProductListResponse)
+async def list_products(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_products(page=page, page_size=page_size, search=search)
+
+
+@products_router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+async def create_product(product_data: ProductCreate, service: AdminService = Depends(get_admin_service)):
+    return await service.create_product(product_data)
+
+
+@products_router.put("/{product_id}", response_model=ProductResponse)
+async def update_product(
+    product_id: int,
+    product_data: ProductUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_product(product_id, product_data)
+
+
+@products_router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_product(product_id: int, service: AdminService = Depends(get_admin_service)):
+    await service.delete_product(product_id)
+
+
+@products_router.post("/batch-delete")
+async def batch_delete_products(payload: BatchDeleteRequest, service: AdminService = Depends(get_admin_service)):
+    deleted = await service.batch_delete_products(payload.ids)
+    return {"deleted": deleted}
+
+
+@products_router.patch("/{product_id}/status", response_model=ProductResponse)
+async def update_product_status(
+    product_id: int,
+    status_update: ActiveStatusUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_product_status(product_id, status_update.is_active)
+
+
+@products_router.post("/{product_id}/image", response_model=ProductResponse)
+async def upload_product_image(
+    product_id: int,
+    image: UploadFile = File(...),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.upload_product_image(product_id, image)
+
+
+@products_router.delete("/{product_id}/image", response_model=ProductResponse)
+async def remove_product_image(
+    product_id: int,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.remove_product_image(product_id)
+
 router.include_router(users_router)
 router.include_router(warehouses_router)
+router.include_router(customers_router)
+router.include_router(products_router)
 

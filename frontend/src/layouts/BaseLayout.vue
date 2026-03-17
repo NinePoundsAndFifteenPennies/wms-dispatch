@@ -26,6 +26,14 @@
           <el-icon class="menu-icon"><User /></el-icon>
           用户管理
         </el-menu-item>
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/customers">
+          <el-icon class="menu-icon"><User /></el-icon>
+          客户管理
+        </el-menu-item>
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/products">
+          <el-icon class="menu-icon"><Goods /></el-icon>
+          产品管理
+        </el-menu-item>
       </el-menu>
 
       <div class="status-panel">
@@ -80,7 +88,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Bell, Connection, House, List, Tickets, User, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, Goods, House, List, Tickets, User, UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/http'
 
@@ -97,6 +105,8 @@ const titleMap = {
   '/orders': '订单管理',
   '/work-orders': '工单管理',
   '/users': '用户管理',
+  '/customers': '客户管理',
+  '/products': '产品管理',
 }
 
 const pageTitle = computed(() => titleMap[route.path] || 'WMS Dispatch')

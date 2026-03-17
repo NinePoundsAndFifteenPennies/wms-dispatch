@@ -276,3 +276,40 @@ GET /api/admin/warehouses
 | id | int | 仓库唯一编号 |
 | name | string | 仓库对外显示名称 |
 
+---
+
+### 客户管理（新增）
+
+```http
+GET    /api/admin/customers
+POST   /api/admin/customers
+PUT    /api/admin/customers/{customer_id}
+DELETE /api/admin/customers/{customer_id}
+POST   /api/admin/customers/batch-delete
+PATCH  /api/admin/customers/{customer_id}/status
+```
+
+**说明：**
+- `PATCH /status` 请求体：`{"is_active": true|false}`。
+- 客户列表返回字段含 `is_active`，前端可展示停用记录并进行恢复。
+
+---
+
+### 产品管理（新增）
+
+```http
+GET    /api/admin/products
+POST   /api/admin/products
+PUT    /api/admin/products/{product_id}
+DELETE /api/admin/products/{product_id}
+POST   /api/admin/products/batch-delete
+PATCH  /api/admin/products/{product_id}/status
+POST   /api/admin/products/{product_id}/image
+DELETE /api/admin/products/{product_id}/image
+```
+
+**图片接口说明：**
+- 上传图片：`POST /image`，`multipart/form-data`，字段名为 `image`。
+- 移除图片：`DELETE /image`，会将数据库 `cover_image` 清空，并删除服务器文件。
+- 更换图片：重复调用上传接口即可，系统会替换 URL 并清理旧图文件。
+

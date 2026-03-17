@@ -2,17 +2,22 @@ import logging
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from api.router import router as api_router
 from modules.auth.dependencies import inject_current_user_from_token
 from modules.shared.response import failure, success
+from modules.shared.storage import RESOURCES_ROOT, ensure_resource_dirs
 
 app = FastAPI(
     title='WMS Dispatch API',
     version='0.1.0',
     description='Warehouse dispatch backend APIs.',
 )
+
+ensure_resource_dirs()
+app.mount('/resources', StaticFiles(directory=str(RESOURCES_ROOT)), name='resources')
 
 app.include_router(api_router, prefix='/api')
 logger = logging.getLogger(__name__)
