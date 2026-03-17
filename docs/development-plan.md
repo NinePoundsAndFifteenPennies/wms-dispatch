@@ -24,25 +24,10 @@
 ### Sprint 1：项目基础搭建（约 3 天）
 
 #### 1.1 后端项目初始化
-- [x] 建立 FastAPI 项目结构（按 `backend/modules/` 分模块）
-- [x] 配置 SQLAlchemy 异步引擎 + Alembic 迁移框架
-- [x] 实现 `.env` 配置加载（`python-dotenv`）
-- [x] 实现全局异常处理中间件
-- [x] 实现统一的 API 响应格式（`{ code, message, data }`）
 
 #### 1.2 数据库迁移
-- [ ] 根据 `docs/database.md` 创建 Alembic 初始迁移文件
-- [ ] 第一批表：`users`、`customers`、`warehouses`、`skill_tag_definitions`、`user_skills`
-- [ ] 第二批表：`products`、`product_required_skills`、`inventory`
-- [ ] 第三批表：`orders`、`order_items`、`work_orders`、`work_order_notes`
-- [ ] 第四批表：`transfer_orders`、`notifications`、`reports`
-- [ ] 编写种子数据脚本（初始管理员账号、示例技能标签）
 
 #### 1.3 前端项目初始化
-- [x] 安装路由（Vue Router）和状态管理（Pinia）
-- [x] 安装 UI 框架（推荐 Element Plus）
-- [x] 配置 Axios 请求封装（统一鉴权 Header、错误处理）
-- [x] 实现基础布局：侧边栏 + 顶部导航栏 + 内容区
 
 ---
 
