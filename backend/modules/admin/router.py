@@ -17,7 +17,11 @@ from modules.admin.schemas import (
     UserUpdate, 
     UserStatusUpdate, 
     UserResponse, 
+    WarehouseCreate,
+    WarehouseListResponse,
+    WarehouseOptionResponse,
     WarehouseResponse,
+    WarehouseUpdate,
     UserListResponse
 )
 from modules.admin.services import AdminService
@@ -65,6 +69,75 @@ async def update_user_status(
 @warehouses_router.get("", response_model=List[WarehouseResponse])
 async def list_warehouses(service: AdminService = Depends(get_admin_service)):
     return await service.list_warehouses()
+
+
+@warehouses_router.get("/options", response_model=List[WarehouseOptionResponse])
+async def list_warehouse_options(service: AdminService = Depends(get_admin_service)):
+    return await service.list_warehouses()
+
+
+@warehouses_router.get("/manage", response_model=WarehouseListResponse)
+async def list_warehouses_manage(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_warehouses_manage(page=page, page_size=page_size, search=search)
+
+
+@warehouses_router.post("", response_model=WarehouseResponse, status_code=status.HTTP_201_CREATED)
+async def create_warehouse(
+    warehouse_data: WarehouseCreate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.create_warehouse(warehouse_data)
+
+
+@warehouses_router.put("/{warehouse_id}", response_model=WarehouseResponse)
+async def update_warehouse(
+    warehouse_id: int,
+    warehouse_data: WarehouseUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_warehouse(warehouse_id, warehouse_data)
+
+
+@warehouses_router.delete("/{warehouse_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_warehouse(warehouse_id: int, service: AdminService = Depends(get_admin_service)):
+    await service.delete_warehouse(warehouse_id)
+
+
+@warehouses_router.post("/batch-delete")
+async def batch_delete_warehouses(payload: BatchDeleteRequest, service: AdminService = Depends(get_admin_service)):
+    deleted = await service.batch_delete_warehouses(payload.ids)
+    return {"deleted": deleted}
+
+
+@warehouses_router.patch("/{warehouse_id}/status", response_model=WarehouseResponse)
+async def update_warehouse_status(
+    warehouse_id: int,
+    status_update: ActiveStatusUpdate,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_warehouse_status(warehouse_id, status_update.is_active)
+
+
+@warehouses_router.post("/{warehouse_id}/image", response_model=WarehouseResponse)
+async def upload_warehouse_image(
+    warehouse_id: int,
+    image: UploadFile = File(...),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.upload_warehouse_image(warehouse_id, image)
+
+
+@warehouses_router.delete("/{warehouse_id}/image", response_model=WarehouseResponse)
+async def remove_warehouse_image(
+    warehouse_id: int,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.remove_warehouse_image(warehouse_id)
 
 
 @customers_router.get("", response_model=CustomerListResponse)
@@ -175,4 +248,3 @@ router.include_router(users_router)
 router.include_router(warehouses_router)
 router.include_router(customers_router)
 router.include_router(products_router)
-
