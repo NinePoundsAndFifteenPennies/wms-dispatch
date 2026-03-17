@@ -4,7 +4,14 @@ import DashboardView from '../views/DashboardView.vue'
 import OrdersView from '../views/OrdersView.vue'
 import WorkOrdersView from '../views/WorkOrdersView.vue'
 import LoginView from '../views/LoginView.vue'
-import { useAuthStore } from '../stores/auth'
+import UsersView from '../views/UsersView.vue'
+import { useAuthStore, getDefaultPathByRole, isTokenExpired } from '../stores/auth'
+import { authApi } from '../api/auth'
+
+function handleDisabledUser(authStore, redirectPath) {
+  authStore.clearToken()
+  return { name: 'login', query: { redirect: redirectPath } }
+}
 
 const routes = [
   {
@@ -21,16 +28,25 @@ const routes = [
         path: '',
         name: 'dashboard',
         component: DashboardView,
+        meta: { roles: ['admin', 'dispatcher', 'worker'] },
       },
       {
         path: 'orders',
         name: 'orders',
         component: OrdersView,
+        meta: { roles: ['admin', 'dispatcher'] },
       },
       {
         path: 'work-orders',
         name: 'work-orders',
         component: WorkOrdersView,
+        meta: { roles: ['admin', 'dispatcher', 'worker'] },
+      },
+      {
+        path: 'users',
+        name: 'users',
+        component: UsersView,
+        meta: { roles: ['admin'] },
       },
     ],
   },
@@ -44,7 +60,17 @@ const router = createRouter({
 router.beforeEach((to) => {
   const authStore = useAuthStore()
 
+  if (authStore.isAuthenticated && isTokenExpired(authStore.token)) {
+    authStore.clearToken()
+    if (!to.meta.public) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
+
   if (to.meta.public) {
+    if (to.name === 'login' && authStore.isAuthenticated && authStore.currentUser?.role) {
+      return { path: getDefaultPathByRole(authStore.currentUser.role) }
+    }
     return true
   }
 
@@ -52,7 +78,37 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  return true
+  const requiredRoles = to.meta.roles || []
+  if (authStore.profileLoaded && authStore.currentUser) {
+    if (!authStore.currentUser.is_active) {
+      return handleDisabledUser(authStore, to.fullPath)
+    }
+    if (requiredRoles.length > 0 && !requiredRoles.includes(authStore.currentUser.role)) {
+      return { path: getDefaultPathByRole(authStore.currentUser.role) }
+    }
+    return true
+  }
+
+  return authApi
+    .getMe()
+    .then((response) => {
+      const user = response.data?.data
+      if (!user?.is_active) {
+        return handleDisabledUser(authStore, to.fullPath)
+      }
+
+      authStore.setCurrentUser(user)
+
+      if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
+        return { path: getDefaultPathByRole(user.role) }
+      }
+
+      return true
+    })
+    .catch(() => {
+      authStore.clearToken()
+      return { name: 'login', query: { redirect: to.fullPath } }
+    })
 })
 
 export default router

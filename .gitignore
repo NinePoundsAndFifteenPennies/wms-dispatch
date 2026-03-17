@@ -216,4 +216,7 @@ backend/.env
 
 # 分支切换脚本
 scripts
+
+# 资源
+resources/
 ```
