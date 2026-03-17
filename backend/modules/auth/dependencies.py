@@ -3,16 +3,16 @@ from functools import wraps
 import inspect
 from typing import Any
 
+import bcrypt
 from fastapi import Depends, HTTPException, Request, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.shared.config import settings
 from modules.shared.database import AsyncSessionLocal
 
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+BCRYPT_MAX_PASSWORD_BYTES = 72
 ALGORITHM = settings.jwt_algorithm
 TOKEN_EXPIRE_HOURS = settings.jwt_expire_hours
 JWT_SECRET_KEY = settings.jwt_secret_key
@@ -24,7 +24,13 @@ async def get_db_session():
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode('utf-8')[:BCRYPT_MAX_PASSWORD_BYTES]
+    hashed_password_bytes = hashed_password.encode('utf-8')
+
+    try:
+        return bcrypt.checkpw(password_bytes, hashed_password_bytes)
+    except ValueError:
+        return False
 
 
 def create_access_token(user: dict[str, Any]) -> str:
