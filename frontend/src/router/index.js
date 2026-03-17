@@ -8,6 +8,11 @@ import UsersView from '../views/UsersView.vue'
 import { useAuthStore, getDefaultPathByRole } from '../stores/auth'
 import http from '../api/http'
 
+function handleDisabledUser(authStore, redirectPath) {
+  authStore.clearToken()
+  return { name: 'login', query: { redirect: redirectPath } }
+}
+
 const routes = [
   {
     path: '/login',
@@ -66,18 +71,27 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
+  const requiredRoles = to.meta.roles || []
+  if (authStore.profileLoaded && authStore.currentUser) {
+    if (!authStore.currentUser.is_active) {
+      return handleDisabledUser(authStore, to.fullPath)
+    }
+    if (requiredRoles.length > 0 && !requiredRoles.includes(authStore.currentUser.role)) {
+      return { path: getDefaultPathByRole(authStore.currentUser.role) }
+    }
+    return true
+  }
+
   return http
     .get('/auth/me')
     .then((response) => {
       const user = response.data?.data
       if (!user?.is_active) {
-        authStore.clearToken()
-        return { name: 'login', query: { redirect: to.fullPath } }
+        return handleDisabledUser(authStore, to.fullPath)
       }
 
       authStore.setCurrentUser(user)
 
-      const requiredRoles = to.meta.roles || []
       if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
         return { path: getDefaultPathByRole(user.role) }
       }

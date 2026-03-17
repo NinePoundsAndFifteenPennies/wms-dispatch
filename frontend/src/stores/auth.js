@@ -4,9 +4,20 @@ import { defineStore } from 'pinia'
 const TOKEN_KEY = 'wms_dispatch_token'
 const USER_KEY = 'wms_dispatch_user'
 
+function parseStoredUser() {
+  const raw = localStorage.getItem(USER_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    localStorage.removeItem(USER_KEY)
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem(TOKEN_KEY) || '')
-  const currentUser = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'))
+  const currentUser = ref(parseStoredUser())
   const profileLoaded = ref(Boolean(currentUser.value))
 
   const isAuthenticated = computed(() => Boolean(token.value))

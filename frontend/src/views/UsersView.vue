@@ -141,7 +141,8 @@ async function saveUser() {
   }
 
   if (dialogMode.value === 'create') {
-    users.value.unshift({ ...payload, id: Date.now() })
+    const nextId = users.value.reduce((maxId, item) => Math.max(maxId, item.id), 0) + 1
+    users.value.unshift({ ...payload, id: nextId })
     ElMessage.success('已新增用户（演示数据）')
   } else {
     const target = users.value.find((item) => item.id === editingId.value)

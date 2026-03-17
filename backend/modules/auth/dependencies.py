@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from functools import wraps
+import inspect
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -69,31 +70,32 @@ async def get_current_user(request: Request, session: AsyncSession = Depends(get
 
 async def get_current_user_required(current_user=Depends(get_current_user)):
     if current_user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='unauthorized')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Unauthorized')
     if not current_user['is_active']:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='user is disabled')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='User is disabled')
     return current_user
 
 
 def require_role(required_role: str):
     def decorator(func):
+        signature = inspect.signature(func)
+
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            request = kwargs.get('request')
-            if request is None:
-                for arg in args:
-                    if isinstance(arg, Request):
-                        request = arg
-                        break
+            bound_arguments = signature.bind_partial(*args, **kwargs)
+            request = bound_arguments.arguments.get('request')
 
-            if request is None:
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='request not found')
+            if not isinstance(request, Request):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail='require_role requires `request: Request` in endpoint arguments',
+                )
 
             current_user = getattr(request.state, 'current_user', None)
             if current_user is None:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='unauthorized')
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Unauthorized')
             if current_user.get('role') != required_role:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='forbidden')
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
             return await func(*args, **kwargs)
 
         return wrapper

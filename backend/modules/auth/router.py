@@ -34,11 +34,11 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db_se
     )
     user = result.mappings().first()
     if not user or not verify_password(payload.password, user['password']):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='invalid username or password')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid username or password')
     if not user['is_active']:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='user is disabled')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='User is disabled')
 
-    token = create_access_token(dict(user))
+    token = create_access_token({'id': user['id'], 'username': user['username'], 'role': user['role']})
     return success(
         data={
             'token': token,
