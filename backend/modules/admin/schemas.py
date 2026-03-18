@@ -46,9 +46,47 @@ class UserListResponse(BaseModel):
 class WarehouseResponse(BaseModel):
     id: int
     name: str
+    address: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    capacity: Optional[int] = None
+    cover_image: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
 
     class Config:
         from_attributes = True
+
+
+class WarehouseOptionResponse(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class WarehouseCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    address: str = Field(min_length=1)
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
+    capacity: int = Field(default=0, ge=0)
+    description: Optional[str] = None
+
+
+class WarehouseUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    address: Optional[str] = Field(default=None, min_length=1)
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
+    capacity: Optional[int] = Field(default=None, ge=0)
+    description: Optional[str] = None
+
+
+class WarehouseListResponse(BaseModel):
+    items: List[WarehouseResponse]
+    total: int
 
 
 class CustomerCreate(BaseModel):
@@ -135,4 +173,3 @@ class BatchDeleteRequest(BaseModel):
 
 class ActiveStatusUpdate(BaseModel):
     is_active: bool
-

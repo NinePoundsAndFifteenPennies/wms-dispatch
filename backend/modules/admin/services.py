@@ -16,6 +16,8 @@ from modules.admin.schemas import (
     UserCreate,
     UserStatusUpdate,
     UserUpdate,
+    WarehouseCreate,
+    WarehouseUpdate,
 )
 from modules.shared.storage import save_image_file
 from modules.shared.storage import delete_resource_file_by_url
@@ -122,9 +124,157 @@ class AdminService:
         await self.session.refresh(user)
         return user
 
+    async def batch_disable_users(self, ids: List[int]) -> int:
+        result = await self.session.execute(
+            select(User).where(User.id.in_(ids), User.is_active.is_(True), User.role != "admin")
+        )
+        users = result.scalars().all()
+        if not users:
+            return 0
+
+        for user in users:
+            user.is_active = False
+        await self.session.commit()
+        return len(users)
+
     async def list_warehouses(self) -> List[Warehouse]:
         result = await self.session.execute(select(Warehouse).order_by(Warehouse.id.asc()))
         return result.scalars().all()
+
+    async def list_warehouses_manage(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
+        stmt = select(Warehouse)
+        if search:
+            stmt = stmt.where(
+                or_(
+                    Warehouse.name.ilike(f"%{search}%"),
+                    Warehouse.address.ilike(f"%{search}%"),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = await self.session.scalar(count_stmt)
+
+        stmt = stmt.order_by(Warehouse.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+        return {"items": items, "total": total}
+
+    async def create_warehouse(self, warehouse_data: WarehouseCreate) -> Warehouse:
+        existing = await self.session.execute(select(Warehouse).where(Warehouse.name == warehouse_data.name))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Warehouse name already exists")
+
+        warehouse = Warehouse(**warehouse_data.model_dump())
+        self.session.add(warehouse)
+        try:
+            await self.session.commit()
+            await self.session.refresh(warehouse)
+            return warehouse
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def update_warehouse(self, warehouse_id: int, warehouse_data: WarehouseUpdate) -> Warehouse:
+        result = await self.session.execute(select(Warehouse).where(Warehouse.id == warehouse_id))
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        update_data = warehouse_data.model_dump(exclude_unset=True)
+        if "name" in update_data and update_data["name"] != warehouse.name:
+            existing = await self.session.execute(select(Warehouse).where(Warehouse.name == update_data["name"]))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Warehouse name already exists")
+
+        for field_name, value in update_data.items():
+            setattr(warehouse, field_name, value)
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(warehouse)
+            return warehouse
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    async def delete_warehouse(self, warehouse_id: int) -> None:
+        result = await self.session.execute(select(Warehouse).where(Warehouse.id == warehouse_id))
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        warehouse.is_active = False
+        await self.session.commit()
+
+    async def update_warehouse_status(self, warehouse_id: int, is_active: bool) -> Warehouse:
+        result = await self.session.execute(select(Warehouse).where(Warehouse.id == warehouse_id))
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        warehouse.is_active = is_active
+        await self.session.commit()
+        await self.session.refresh(warehouse)
+        return warehouse
+
+    async def batch_delete_warehouses(self, ids: List[int]) -> int:
+        result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id.in_(ids), Warehouse.is_active.is_(True))
+        )
+        warehouses = result.scalars().all()
+        if not warehouses:
+            return 0
+
+        for warehouse in warehouses:
+            warehouse.is_active = False
+        await self.session.commit()
+        return len(warehouses)
+
+    async def upload_warehouse_image(self, warehouse_id: int, image: UploadFile) -> Warehouse:
+        result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
+        )
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        old_image_path = warehouse.cover_image
+        saved_path = await save_image_file(
+            upload_file=image,
+            bucket="warehouse_covers",
+            entity_prefix="warehouse",
+            entity_id=warehouse_id,
+        )
+        warehouse.cover_image = saved_path
+
+        try:
+            await self.session.commit()
+            await self.session.refresh(warehouse)
+        except Exception as e:
+            await self.session.rollback()
+            delete_resource_file_by_url(saved_path)
+            raise HTTPException(status_code=400, detail=str(e))
+
+        if old_image_path and old_image_path != saved_path:
+            delete_resource_file_by_url(old_image_path)
+        return warehouse
+
+    async def remove_warehouse_image(self, warehouse_id: int) -> Warehouse:
+        result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
+        )
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        old_image_path = warehouse.cover_image
+        warehouse.cover_image = None
+        if old_image_path and not delete_resource_file_by_url(old_image_path):
+            await self.session.rollback()
+            raise HTTPException(status_code=500, detail="Failed to delete warehouse image file")
+        await self.session.commit()
+        await self.session.refresh(warehouse)
+        return warehouse
 
     async def list_customers(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
         stmt = select(Customer)
@@ -279,23 +429,14 @@ class AdminService:
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        image_to_delete = product.cover_image
-        product.cover_image = None
         product.is_active = False
         await self.session.commit()
-        delete_resource_file_by_url(image_to_delete)
 
     async def update_product_status(self, product_id: int, is_active: bool) -> Product:
         result = await self.session.execute(select(Product).where(Product.id == product_id))
         product = result.scalar_one_or_none()
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
-
-        # Keep soft-delete semantics: disabling a product also removes its image reference and file.
-        if not is_active and product.cover_image:
-            image_to_delete = product.cover_image
-            product.cover_image = None
-            delete_resource_file_by_url(image_to_delete)
 
         product.is_active = is_active
         await self.session.commit()
@@ -359,4 +500,3 @@ class AdminService:
 
         delete_resource_file_by_url(old_image_path)
         return product
-

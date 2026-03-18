@@ -1,14 +1,14 @@
 <template>
-  <div class="products-page">
+  <div class="warehouses-page">
     <section class="toolbar">
       <div>
-        <h3>产品管理</h3>
-        <p>维护 SKU 主数据，支持图片上传、搜索与批量禁用。</p>
+        <h3>仓库管理</h3>
+        <p>维护仓库基础信息与仓库图片（地图解析功能后续接入）。</p>
       </div>
       <div class="toolbar-actions">
         <el-input
           v-model="searchQuery"
-          placeholder="按 SKU / 名称 / 类别搜索"
+          placeholder="按仓库名称/地址搜索"
           clearable
           @keyup.enter="handleSearch"
         >
@@ -21,13 +21,13 @@
         </el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
-          新增产品
+          新增仓库
         </el-button>
       </div>
     </section>
 
     <el-card shadow="never" class="table-card" v-loading="loading">
-      <el-table :data="products" stripe @selection-change="onSelectionChange">
+      <el-table :data="warehouses" stripe @selection-change="onSelectionChange">
         <el-table-column type="selection" width="52" />
         <el-table-column label="图片" width="88">
           <template #default="{ row }">
@@ -42,19 +42,17 @@
             <span v-else class="empty-thumb"><el-icon><Picture /></el-icon></span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="产品名称" min-width="180" />
-        <el-table-column prop="sku" label="SKU" min-width="120" />
-        <el-table-column prop="category" label="类别" min-width="130" />
-        <el-table-column prop="unit_of_measure" label="单位" width="96" />
-        <el-table-column prop="unit_weight" label="重量(g)" width="120" />
-        <el-table-column label="状态" width="120">
+        <el-table-column prop="name" label="仓库名称" min-width="170" />
+        <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="capacity" label="容量" width="100" />
+        <el-table-column label="经纬度" min-width="180">
           <template #default="{ row }">
-            <el-switch v-model="row.is_active" @change="val => onStatusChange(row, val)" />
+            <span>{{ row.latitude ?? '-' }}, {{ row.longitude ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="技能要求" min-width="200">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
-            P:{{ row.req_skill_picking }} / S:{{ row.req_skill_staging }} / H:{{ row.req_skill_shipping }}
+            <el-switch v-model="row.is_active" :before-change="() => beforeStatusChange(row)" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="210">
@@ -79,103 +77,44 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增产品' : '编辑产品'" width="620px">
+    <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增仓库' : '编辑仓库'" width="640px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="SKU" prop="sku">
-              <el-input v-model="form.sku" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="产品名称" prop="name">
-              <el-input v-model="form.name" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="类别" prop="category">
-              <el-input v-model="form.category" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="计量单位" prop="unit_of_measure">
-              <el-input v-model="form.unit_of_measure" placeholder="piece / box / kg" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-form-item label="单位重量(g)" prop="unit_weight">
-          <el-input-number v-model="form.unit_weight" :min="0" :precision="2" :step="0.1" style="width: 100%" />
+        <el-form-item label="仓库名称" prop="name">
+          <el-input v-model="form.name" />
         </el-form-item>
-
-        <el-alert
-          type="info"
-          show-icon
-          :closable="false"
-          title="图片管理请使用列表中的“图片”按钮，可执行添加、替换、移除。"
-          style="margin-bottom: 12px"
-        />
-
+        <el-form-item label="仓库地址" prop="address">
+          <el-input v-model="form.address" type="textarea" :rows="2" />
+        </el-form-item>
         <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item label="分拣要求" prop="req_skill_picking">
-              <el-input-number
-                v-model="form.req_skill_picking"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-                controls-position="right"
-                style="width: 100%; min-width: 100px"
-              />
+          <el-col :span="12">
+            <el-form-item label="纬度" prop="latitude">
+              <el-input-number v-model="form.latitude" :step="0.000001" :precision="6" style="width: 100%" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="备货要求" prop="req_skill_staging">
-              <el-input-number
-                v-model="form.req_skill_staging"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-                controls-position="right"
-                style="width: 100%; min-width: 100px"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="发货要求" prop="req_skill_shipping">
-              <el-input-number
-                v-model="form.req_skill_shipping"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-                controls-position="right"
-                style="width: 100%; min-width: 100px"
-              />
+          <el-col :span="12">
+            <el-form-item label="经度" prop="longitude">
+              <el-input-number v-model="form.longitude" :step="0.000001" :precision="6" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
-
+        <el-form-item label="容量" prop="capacity">
+          <el-input-number v-model="form.capacity" :min="0" style="width: 100%" />
+        </el-form-item>
         <el-form-item label="备注" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveProduct">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="saveWarehouse">保存</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="产品详情" width="760px">
+    <el-dialog v-model="detailVisible" title="仓库详情" width="760px">
       <div class="detail-grid">
         <el-card shadow="never" class="detail-card image-card">
           <template #header>
-            <span>产品图片</span>
+            <span>仓库图片</span>
           </template>
           <div class="detail-image-wrap">
             <el-image
@@ -191,7 +130,7 @@
               <span>暂无图片</span>
             </div>
           </div>
-          <el-button style="margin-top: 10px" @click="openImageDialog({ id: detailEditingId.value, name: detailForm.name, cover_image: detailForm.cover_image })">
+          <el-button style="margin-top: 10px" @click="openImageDialog({ id: detailEditingId, name: detailForm.name, cover_image: detailForm.cover_image })">
             管理图片
           </el-button>
         </el-card>
@@ -201,47 +140,26 @@
             <span>基础信息</span>
           </template>
           <el-form ref="detailFormRef" :model="detailForm" :rules="rules" label-width="110px">
-            <el-form-item label="产品名称" prop="name">
+            <el-form-item label="仓库名称" prop="name">
               <el-input v-model="detailForm.name" />
             </el-form-item>
-            <el-form-item label="SKU" prop="sku">
-              <el-input v-model="detailForm.sku" />
+            <el-form-item label="仓库地址" prop="address">
+              <el-input v-model="detailForm.address" type="textarea" :rows="2" />
             </el-form-item>
-            <el-form-item label="类别" prop="category">
-              <el-input v-model="detailForm.category" />
-            </el-form-item>
-            <el-form-item label="计量单位" prop="unit_of_measure">
-              <el-input v-model="detailForm.unit_of_measure" />
-            </el-form-item>
-            <el-form-item label="单位重量(g)" prop="unit_weight">
-              <el-input-number v-model="detailForm.unit_weight" :min="0" :precision="2" :step="0.1" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="分拣要求" prop="req_skill_picking">
-              <el-input-number
-                v-model="detailForm.req_skill_picking"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-              />
-            </el-form-item>
-            <el-form-item label="备货要求" prop="req_skill_staging">
-              <el-input-number
-                v-model="detailForm.req_skill_staging"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-              />
-            </el-form-item>
-            <el-form-item label="发货要求" prop="req_skill_shipping">
-              <el-input-number
-                v-model="detailForm.req_skill_shipping"
-                :min="MIN_SKILL_LEVEL"
-                :max="MAX_SKILL_LEVEL"
-                :step="1"
-                :precision="0"
-              />
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="纬度" prop="latitude">
+                  <el-input-number v-model="detailForm.latitude" :step="0.000001" :precision="6" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="经度" prop="longitude">
+                  <el-input-number v-model="detailForm.longitude" :step="0.000001" :precision="6" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="容量" prop="capacity">
+              <el-input-number v-model="detailForm.capacity" :min="0" style="width: 100%" />
             </el-form-item>
             <el-form-item label="状态">
               <el-switch v-model="detailForm.is_active" />
@@ -301,12 +219,11 @@
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus, Search } from '@element-plus/icons-vue'
-import { productsApi } from '../api/products'
+import { warehousesApi } from '../api/warehouses'
 
-const products = ref([])
+const warehouses = ref([])
 const loading = ref(false)
 const saving = ref(false)
-
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -316,11 +233,32 @@ const selectedIds = ref([])
 const dialogVisible = ref(false)
 const dialogMode = ref('create')
 const editingId = ref(null)
+const formRef = ref()
 const detailVisible = ref(false)
-const detailEditingId = ref(null)
 const detailSaving = ref(false)
+const detailEditingId = ref(null)
+const detailFormRef = ref()
+const form = reactive({
+  name: '',
+  address: '',
+  latitude: null,
+  longitude: null,
+  capacity: 0,
+  description: '',
+})
+const detailForm = reactive({
+  name: '',
+  address: '',
+  latitude: null,
+  longitude: null,
+  capacity: 0,
+  description: '',
+  cover_image: '',
+  is_active: true,
+})
+
 const imageDialogVisible = ref(false)
-const imageTargetProductId = ref(null)
+const imageTargetWarehouseId = ref(null)
 const imageTargetName = ref('')
 const imagePreviewUrl = ref('')
 const imagePreviewObjectUrl = ref('')
@@ -328,47 +266,10 @@ const imageOriginalUrl = ref('')
 const imageSelectedFile = ref(null)
 const imageRemoveRequested = ref(false)
 const savingImage = ref(false)
-const formRef = ref()
-const detailFormRef = ref()
-const form = reactive({
-  sku: '',
-  name: '',
-  category: '',
-  unit_weight: 0,
-  unit_of_measure: 'piece',
-  req_skill_picking: 0,
-  req_skill_staging: 0,
-  req_skill_shipping: 0,
-  description: '',
-})
-const detailForm = reactive({
-  sku: '',
-  name: '',
-  category: '',
-  unit_weight: 0,
-  unit_of_measure: 'piece',
-  req_skill_picking: 0,
-  req_skill_staging: 0,
-  req_skill_shipping: 0,
-  description: '',
-  cover_image: '',
-  is_active: true,
-})
 
 const rules = {
-  sku: [{ required: true, message: '请输入 SKU', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
-  unit_of_measure: [{ required: true, message: '请输入计量单位', trigger: 'blur' }],
-}
-
-const MIN_SKILL_LEVEL = 0
-const MAX_SKILL_LEVEL = 10
-
-function normalizeSkill(value) {
-  const parsed = Number(value)
-  // 对非法输入做兜底，避免提交到后端时触发类型错误。
-  if (Number.isNaN(parsed)) return MIN_SKILL_LEVEL
-  return Math.min(MAX_SKILL_LEVEL, Math.max(MIN_SKILL_LEVEL, Math.trunc(parsed)))
+  name: [{ required: true, message: '请输入仓库名称', trigger: 'blur' }],
+  address: [{ required: true, message: '请输入仓库地址', trigger: 'blur' }],
 }
 
 function onSelectionChange(selection) {
@@ -400,15 +301,15 @@ function onImageDialogFileChange(file) {
   imageRemoveRequested.value = false
 }
 
-async function fetchProducts() {
+async function fetchWarehouses() {
   loading.value = true
   try {
-    const res = await productsApi.getProducts({
+    const res = await warehousesApi.getWarehouses({
       page: currentPage.value,
       page_size: pageSize.value,
       search: searchQuery.value || undefined,
     })
-    products.value = res.data.items || []
+    warehouses.value = res.data.items || []
     total.value = res.data.total || 0
   } finally {
     loading.value = false
@@ -417,28 +318,25 @@ async function fetchProducts() {
 
 function handleSearch() {
   currentPage.value = 1
-  fetchProducts()
+  fetchWarehouses()
 }
 
 function handleSizeChange(size) {
   pageSize.value = size
-  fetchProducts()
+  fetchWarehouses()
 }
 
 function handleCurrentChange(page) {
   currentPage.value = page
-  fetchProducts()
+  fetchWarehouses()
 }
 
 function resetForm() {
-  form.sku = ''
   form.name = ''
-  form.category = ''
-  form.unit_weight = 0
-  form.unit_of_measure = 'piece'
-  form.req_skill_picking = 0
-  form.req_skill_staging = 0
-  form.req_skill_shipping = 0
+  form.address = ''
+  form.latitude = null
+  form.longitude = null
+  form.capacity = 0
   form.description = ''
   editingId.value = null
 }
@@ -453,14 +351,11 @@ function openCreateDialog() {
 function openEditDialog(row) {
   dialogMode.value = 'edit'
   editingId.value = row.id
-  form.sku = row.sku
   form.name = row.name
-  form.category = row.category || ''
-  form.unit_weight = Number(row.unit_weight || 0)
-  form.unit_of_measure = row.unit_of_measure || 'piece'
-  form.req_skill_picking = normalizeSkill(row.req_skill_picking)
-  form.req_skill_staging = normalizeSkill(row.req_skill_staging)
-  form.req_skill_shipping = normalizeSkill(row.req_skill_shipping)
+  form.address = row.address || ''
+  form.latitude = row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null
+  form.longitude = row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null
+  form.capacity = row.capacity || 0
   form.description = row.description || ''
   dialogVisible.value = true
   if (formRef.value) formRef.value.clearValidate()
@@ -468,7 +363,7 @@ function openEditDialog(row) {
 
 function openImageDialog(row) {
   revokeImagePreviewObjectUrl()
-  imageTargetProductId.value = row.id
+  imageTargetWarehouseId.value = row.id
   imageTargetName.value = row.name
   imagePreviewUrl.value = row.cover_image || ''
   imageOriginalUrl.value = row.cover_image || ''
@@ -479,14 +374,11 @@ function openImageDialog(row) {
 
 function openDetailDialog(row) {
   detailEditingId.value = row.id
-  detailForm.sku = row.sku
   detailForm.name = row.name
-  detailForm.category = row.category || ''
-  detailForm.unit_weight = Number(row.unit_weight || 0)
-  detailForm.unit_of_measure = row.unit_of_measure || 'piece'
-  detailForm.req_skill_picking = normalizeSkill(row.req_skill_picking)
-  detailForm.req_skill_staging = normalizeSkill(row.req_skill_staging)
-  detailForm.req_skill_shipping = normalizeSkill(row.req_skill_shipping)
+  detailForm.address = row.address || ''
+  detailForm.latitude = row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null
+  detailForm.longitude = row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null
+  detailForm.capacity = row.capacity || 0
   detailForm.description = row.description || ''
   detailForm.cover_image = row.cover_image || ''
   detailForm.is_active = row.is_active
@@ -510,7 +402,7 @@ function onImageDialogClosed() {
 }
 
 async function saveImageChanges() {
-  if (!imageTargetProductId.value) return
+  if (!imageTargetWarehouseId.value) return
 
   if (!imageSelectedFile.value && !imageRemoveRequested.value) {
     ElMessage.info('没有图片变更')
@@ -520,18 +412,18 @@ async function saveImageChanges() {
   savingImage.value = true
   try {
     if (imageSelectedFile.value) {
-      await productsApi.uploadProductImage(imageTargetProductId.value, imageSelectedFile.value)
+      await warehousesApi.uploadWarehouseImage(imageTargetWarehouseId.value, imageSelectedFile.value)
       ElMessage.success('图片已更新')
     } else if (imageRemoveRequested.value && imageOriginalUrl.value) {
-      await productsApi.removeProductImage(imageTargetProductId.value)
+      await warehousesApi.removeWarehouseImage(imageTargetWarehouseId.value)
       ElMessage.success('图片已移除')
     }
 
     imageDialogVisible.value = false
     revokeImagePreviewObjectUrl()
-    await fetchProducts()
-    if (detailVisible.value && detailEditingId.value === imageTargetProductId.value) {
-      const latest = products.value.find((item) => item.id === detailEditingId.value)
+    await fetchWarehouses()
+    if (detailVisible.value && detailEditingId.value === imageTargetWarehouseId.value) {
+      const latest = warehouses.value.find((item) => item.id === detailEditingId.value)
       detailForm.cover_image = latest?.cover_image || ''
     }
   } finally {
@@ -539,45 +431,31 @@ async function saveImageChanges() {
   }
 }
 
-async function saveProduct() {
+async function saveWarehouse() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
   saving.value = true
   try {
     const payload = {
-      sku: form.sku,
       name: form.name,
-      category: form.category || null,
-      unit_weight: form.unit_weight || null,
-      unit_of_measure: form.unit_of_measure,
-      req_skill_picking: normalizeSkill(form.req_skill_picking),
-      req_skill_staging: normalizeSkill(form.req_skill_staging),
-      req_skill_shipping: normalizeSkill(form.req_skill_shipping),
+      address: form.address,
+      latitude: form.latitude,
+      longitude: form.longitude,
+      capacity: form.capacity ?? 0,
       description: form.description || null,
     }
-
     if (dialogMode.value === 'create') {
-      await productsApi.createProduct(payload)
+      await warehousesApi.createWarehouse(payload)
       ElMessage.success('新增成功')
     } else {
-      await productsApi.updateProduct(editingId.value, payload)
+      await warehousesApi.updateWarehouse(editingId.value, payload)
       ElMessage.success('更新成功')
     }
-
     dialogVisible.value = false
-    fetchProducts()
+    fetchWarehouses()
   } finally {
     saving.value = false
-  }
-}
-
-async function onStatusChange(row, targetStatus) {
-  try {
-    await productsApi.updateProductStatus(row.id, targetStatus)
-    ElMessage.success('状态更新成功')
-  } catch {
-    row.is_active = !targetStatus
   }
 }
 
@@ -587,43 +465,51 @@ async function saveDetail() {
 
   detailSaving.value = true
   try {
-    await productsApi.updateProduct(detailEditingId.value, {
-      sku: detailForm.sku,
+    await warehousesApi.updateWarehouse(detailEditingId.value, {
       name: detailForm.name,
-      category: detailForm.category || null,
-      unit_weight: detailForm.unit_weight || null,
-      unit_of_measure: detailForm.unit_of_measure,
-      req_skill_picking: normalizeSkill(detailForm.req_skill_picking),
-      req_skill_staging: normalizeSkill(detailForm.req_skill_staging),
-      req_skill_shipping: normalizeSkill(detailForm.req_skill_shipping),
+      address: detailForm.address,
+      latitude: detailForm.latitude,
+      longitude: detailForm.longitude,
+      capacity: detailForm.capacity ?? 0,
       description: detailForm.description || null,
     })
-    await productsApi.updateProductStatus(detailEditingId.value, detailForm.is_active)
+    await warehousesApi.updateWarehouseStatus(detailEditingId.value, detailForm.is_active)
     ElMessage.success('详情保存成功')
     detailVisible.value = false
-    fetchProducts()
+    fetchWarehouses()
   } finally {
     detailSaving.value = false
   }
 }
 
+async function beforeStatusChange(row) {
+  const targetStatus = !row.is_active
+  try {
+    await warehousesApi.updateWarehouseStatus(row.id, targetStatus)
+    ElMessage.success('状态更新成功')
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个产品吗？`, '提示', {
+  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个仓库吗？`, '提示', {
     type: 'warning',
   })
-  await productsApi.batchDeleteProducts(selectedIds.value)
+  await warehousesApi.batchDeleteWarehouses(selectedIds.value)
   ElMessage.success('批量禁用成功')
   selectedIds.value = []
-  fetchProducts()
+  fetchWarehouses()
 }
 
 onMounted(() => {
-  fetchProducts()
+  fetchWarehouses()
 })
 </script>
 
 <style scoped>
-.products-page {
+.warehouses-page {
   display: grid;
   gap: 12px;
 }
@@ -675,6 +561,12 @@ p {
   color: #94a3b8;
 }
 
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .image-panel {
   display: grid;
   gap: 12px;
@@ -701,59 +593,48 @@ p {
   border: 1px dashed #cbd5e1;
   display: grid;
   place-items: center;
-  background: #f8fafc;
 }
 
 .detail-image {
-  width: 210px;
-  height: 210px;
-  border-radius: 8px;
+  width: 100%;
+  min-height: 220px;
+  max-height: 300px;
+  border-radius: 10px;
 }
 
 .detail-image-placeholder {
   color: #94a3b8;
   display: grid;
+  gap: 8px;
   place-items: center;
-  gap: 6px;
-}
-
-.detail-image-placeholder .el-icon {
-  font-size: 26px;
 }
 
 .image-preview-box {
-  width: 180px;
-  height: 180px;
-  border-radius: 10px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed #d5dee9;
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 190px;
   display: grid;
   place-items: center;
-  background: #f8fafc;
+  background: #f8fbff;
 }
 
 .image-preview {
-  width: 160px;
-  height: 160px;
-  border-radius: 8px;
+  width: 100%;
+  max-height: 240px;
+  border-radius: 10px;
 }
 
 .image-empty {
   color: #94a3b8;
-  font-size: 13px;
 }
 
 .image-actions {
   display: flex;
-  gap: 10px;
-}
-
-.pagination-container {
-  margin-top: 16px;
-  display: flex;
   justify-content: flex-end;
 }
 
-@media (max-width: 1060px) {
+@media (max-width: 980px) {
   .toolbar {
     flex-direction: column;
     align-items: flex-start;

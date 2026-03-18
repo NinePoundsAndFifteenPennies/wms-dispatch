@@ -14,7 +14,13 @@ export const adminApi = {
   },
   
   updateUserStatus(id, isActive) {
-    return http.patch(`/admin/users/${id}/status`, { is_active: isActive })  },
+    return http.patch(`/admin/users/${id}/status`, { is_active: isActive })
+  },
+
+  batchDisableUsers(ids) {
+    return http.post('/admin/users/batch-disable', { ids })
+  },
+
   getWarehouses() {
     return http.get('/admin/warehouses')
   }

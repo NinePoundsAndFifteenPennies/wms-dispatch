@@ -16,6 +16,9 @@
             <el-button :icon="Search" @click="handleSearch" />
           </template>
         </el-input>
+        <el-button type="danger" plain :disabled="selectedIds.length === 0" @click="handleBatchDisable">
+          批量禁用
+        </el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
           新增用户
@@ -24,7 +27,8 @@
     </section>
 
     <el-card shadow="never" class="table-card" v-loading="loading">
-      <el-table :data="users" stripe>
+      <el-table :data="users" stripe @selection-change="onSelectionChange">
+        <el-table-column type="selection" width="52" :selectable="isSelectableUser" />
         <el-table-column label="头像" width="84">
           <template #default="{ row }">
             <el-avatar v-if="row.avatar" :src="row.avatar" :size="36" />
@@ -50,7 +54,7 @@
         <el-table-column label="操作" width="170">
           <template #default="{ row }">
             <el-button type="success" link @click="openDetailDialog(row)">详情</el-button>
-            <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
+            <el-button type="primary" link :disabled="!canEditUser(row)" @click="openEditDialog(row)">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -131,32 +135,38 @@
               </div>
             </el-form-item>
             <el-form-item label="用户名" prop="username">
-              <el-input v-model="detailForm.username" />
+              <el-input v-model="detailForm.username" :disabled="detailReadOnly" />
             </el-form-item>
             <el-form-item label="邮箱" prop="email">
-              <el-input v-model="detailForm.email" />
+              <el-input v-model="detailForm.email" :disabled="detailReadOnly" />
             </el-form-item>
             <el-form-item label="角色" prop="role">
-              <el-select v-model="detailForm.role" style="width: 100%">
+              <el-select v-model="detailForm.role" style="width: 100%" :disabled="detailReadOnly">
                 <el-option label="admin" value="admin" />
                 <el-option label="dispatcher" value="dispatcher" />
                 <el-option label="worker" value="worker" />
               </el-select>
             </el-form-item>
             <el-form-item label="仓库" prop="warehouse_id" v-if="detailForm.role !== 'admin'">
-              <el-select v-model="detailForm.warehouse_id" placeholder="选择仓库" style="width: 100%" teleported="false">
+              <el-select
+                v-model="detailForm.warehouse_id"
+                placeholder="选择仓库"
+                style="width: 100%"
+                teleported="false"
+                :disabled="detailReadOnly"
+              >
                 <el-option v-for="wh in warehouses" :key="wh.id" :label="wh.name" :value="wh.id" />
               </el-select>
             </el-form-item>
             <template v-if="detailForm.role === 'worker'">
               <el-form-item label="分拣技能" prop="skill_picking">
-                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
               <el-form-item label="备货技能" prop="skill_staging">
-                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
               <el-form-item label="发货技能" prop="skill_shipping">
-                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
             </template>
           </el-form>
@@ -175,18 +185,20 @@
       </div>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
+        <el-button type="primary" :disabled="detailReadOnly" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, UserFilled } from '@element-plus/icons-vue'
 import { adminApi } from '../api/admin'
+import { useAuthStore } from '../stores/auth'
 
+const authStore = useAuthStore()
 const users = ref([])
 const warehouses = ref([])
 const loading = ref(false)
@@ -196,12 +208,14 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const searchQuery = ref('')
+const selectedIds = ref([])
 
 const dialogVisible = ref(false)
 const dialogMode = ref('create')
 const editingId = ref(null)
 const detailVisible = ref(false)
 const detailEditingId = ref(null)
+const detailIsOtherAdmin = ref(false)
 const detailSaving = ref(false)
 const formRef = ref()
 const detailFormRef = ref()
@@ -274,6 +288,20 @@ function getWarehouseName(id) {
   return wh ? wh.name : (id || '-')
 }
 
+function canEditUser(row) {
+  return !(row.role === 'admin' && row.id !== authStore.currentUser?.id)
+}
+
+const detailReadOnly = computed(() => detailIsOtherAdmin.value)
+
+function isSelectableUser(row) {
+  return row.role !== 'admin'
+}
+
+function onSelectionChange(selection) {
+  selectedIds.value = selection.map((item) => item.id)
+}
+
 async function fetchUsers() {
   loading.value = true
   try {
@@ -341,6 +369,10 @@ function openCreateDialog() {
 }
 
 function openEditDialog(row) {
+  if (!canEditUser(row)) {
+    ElMessage.warning('管理员只能编辑自己的账号')
+    return
+  }
   dialogMode.value = 'edit'
   dialogVisible.value = true
   editingId.value = row.id
@@ -355,6 +387,7 @@ function openEditDialog(row) {
 }
 
 function openDetailDialog(row) {
+  detailIsOtherAdmin.value = row.role === 'admin' && row.id !== authStore.currentUser?.id
   detailEditingId.value = row.id
   detailForm.username = row.username
   detailForm.email = row.email
@@ -402,6 +435,16 @@ async function onStatusChange(row, targetStatus) {
     row.is_active = !targetStatus
     ElMessage.error(error.response?.data?.detail || '更新状态失败')
   }
+}
+
+async function handleBatchDisable() {
+  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个用户吗？`, '提示', {
+    type: 'warning',
+  })
+  await adminApi.batchDisableUsers(selectedIds.value)
+  ElMessage.success('批量禁用成功')
+  selectedIds.value = []
+  fetchUsers()
 }
 
 async function saveUser() {
