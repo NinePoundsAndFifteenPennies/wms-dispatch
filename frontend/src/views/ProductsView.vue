@@ -128,7 +128,8 @@
                 :max="MAX_SKILL_LEVEL"
                 :step="1"
                 :precision="0"
-                style="width: 100%"
+                controls-position="right"
+                style="width: 100%; min-width: 100px"
               />
             </el-form-item>
           </el-col>
@@ -140,7 +141,8 @@
                 :max="MAX_SKILL_LEVEL"
                 :step="1"
                 :precision="0"
-                style="width: 100%"
+                controls-position="right"
+                style="width: 100%; min-width: 100px"
               />
             </el-form-item>
           </el-col>
@@ -152,7 +154,8 @@
                 :max="MAX_SKILL_LEVEL"
                 :step="1"
                 :precision="0"
-                style="width: 100%"
+                controls-position="right"
+                style="width: 100%; min-width: 100px"
               />
             </el-form-item>
           </el-col>
