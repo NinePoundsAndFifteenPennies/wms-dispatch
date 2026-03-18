@@ -14,6 +14,7 @@
         v-model="searchQuery"
         placeholder="按产品名称 / SKU / 类别搜索库存项"
         clearable
+        @clear="handleSearch"
         @keyup.enter="handleSearch"
       >
         <template #append>
@@ -114,7 +115,7 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const searchQuery = ref('')
 const warehouse = reactive({
-  id: null,
+  id: warehouseId,
   name: '',
   address: '',
   cover_image: '',

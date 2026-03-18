@@ -110,7 +110,10 @@ class WarehouseInventoryResponse(BaseModel):
 
 
 class StocktakeAdjustRequest(BaseModel):
-    qty_on_hand: int = Field(ge=0)
+    qty_on_hand: int = Field(
+        ge=0,
+        description="盘点后的现存量，且必须不小于当前预留量与锁定量之和",
+    )
 
 
 class CustomerCreate(BaseModel):

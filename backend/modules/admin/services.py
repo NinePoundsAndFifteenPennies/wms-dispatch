@@ -293,7 +293,11 @@ class AdminService:
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = await self.session.scalar(count_stmt)
 
-        stmt = stmt.order_by(Product.name.asc(), Product.id.asc()).offset((page - 1) * page_size).limit(page_size)
+        stmt = (
+            stmt.order_by(Product.name.asc(), Product.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await self.session.execute(stmt)
         rows = result.all()
         items = [
