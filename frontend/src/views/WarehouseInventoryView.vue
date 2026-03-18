@@ -1,7 +1,7 @@
 <template>
   <div class="warehouse-inventory-page">
     <section class="hero-card">
-      <img :src="heroImageUrl" alt="warehouse cover" class="hero-image" />
+      <img :src="heroImageUrl" :alt="`${warehouse.name || '仓库'} 封面图片`" class="hero-image" />
       <div class="hero-overlay">
         <el-button text class="back-btn" @click="router.push('/warehouses')">← 返回仓库管理</el-button>
         <h2>{{ warehouse.name || '仓库库存详情' }}</h2>
@@ -45,7 +45,14 @@
         <el-table-column prop="qty_threshold" label="阈值" width="100" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="openAdjustDialog(row)">盘点修正</el-button>
+            <el-button
+              type="primary"
+              link
+              :aria-label="`为 ${row.product_name} 进行盘点修正`"
+              @click="openAdjustDialog(row)"
+            >
+              盘点修正
+            </el-button>
           </template>
         </el-table-column>
       </el-table>

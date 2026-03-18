@@ -334,7 +334,7 @@ class AdminService:
         if payload.qty_on_hand < min_on_hand:
             raise HTTPException(
                 status_code=400,
-                detail=f"qty_on_hand cannot be less than qty_reserved + qty_locked ({min_on_hand})",
+                detail=f"盘点后的现存量不能低于预留量与锁定量之和（{min_on_hand}）",
             )
 
         inventory.qty_on_hand = payload.qty_on_hand
