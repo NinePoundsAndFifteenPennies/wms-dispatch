@@ -5,6 +5,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer import Customer
+from models.inventory import Inventory
 from models.product import Product
 from models.user import User
 from models.warehouse import Warehouse
@@ -13,10 +14,12 @@ from modules.admin.schemas import (
     CustomerUpdate,
     ProductCreate,
     ProductUpdate,
+    StocktakeAdjustRequest,
     UserCreate,
     UserStatusUpdate,
     UserUpdate,
     WarehouseCreate,
+    WarehouseInventoryItemResponse,
     WarehouseUpdate,
 )
 from modules.shared.storage import save_image_file
@@ -258,6 +261,86 @@ class AdminService:
         if old_image_path and old_image_path != saved_path:
             delete_resource_file_by_url(old_image_path)
         return warehouse
+
+    async def get_warehouse_inventory(
+        self,
+        warehouse_id: int,
+        page: int = 1,
+        page_size: int = 10,
+        search: Optional[str] = None,
+    ):
+        warehouse_result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
+        )
+        warehouse = warehouse_result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+
+        stmt = (
+            select(Inventory, Product)
+            .join(Product, Product.id == Inventory.product_id)
+            .where(Inventory.warehouse_id == warehouse_id)
+        )
+        if search:
+            stmt = stmt.where(
+                or_(
+                    Product.name.ilike(f"%{search}%"),
+                    Product.sku.ilike(f"%{search}%"),
+                    Product.category.ilike(f"%{search}%"),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = await self.session.scalar(count_stmt)
+
+        stmt = stmt.order_by(Product.id.asc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        items = [
+            WarehouseInventoryItemResponse(
+                id=inventory.id,
+                product_id=inventory.product_id,
+                sku=product.sku,
+                product_name=product.name,
+                category=product.category,
+                product_is_active=product.is_active,
+                qty_on_hand=inventory.qty_on_hand,
+                qty_reserved=inventory.qty_reserved,
+                qty_locked=inventory.qty_locked,
+                qty_threshold=inventory.qty_threshold,
+                qty_available=inventory.qty_available,
+            )
+            for inventory, product in rows
+        ]
+
+        return {"warehouse": warehouse, "items": items, "total": total}
+
+    async def adjust_warehouse_inventory_stocktake(
+        self,
+        warehouse_id: int,
+        inventory_id: int,
+        payload: StocktakeAdjustRequest,
+    ):
+        result = await self.session.execute(
+            select(Inventory)
+            .where(Inventory.id == inventory_id)
+            .where(Inventory.warehouse_id == warehouse_id)
+        )
+        inventory = result.scalar_one_or_none()
+        if not inventory:
+            raise HTTPException(status_code=404, detail="Inventory record not found")
+
+        min_on_hand = inventory.qty_reserved + inventory.qty_locked
+        if payload.qty_on_hand < min_on_hand:
+            raise HTTPException(
+                status_code=400,
+                detail=f"qty_on_hand cannot be less than qty_reserved + qty_locked ({min_on_hand})",
+            )
+
+        inventory.qty_on_hand = payload.qty_on_hand
+        await self.session.commit()
+        await self.session.refresh(inventory)
+        return inventory
 
     async def remove_warehouse_image(self, warehouse_id: int) -> Warehouse:
         result = await self.session.execute(

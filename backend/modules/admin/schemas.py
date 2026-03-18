@@ -89,6 +89,30 @@ class WarehouseListResponse(BaseModel):
     total: int
 
 
+class WarehouseInventoryItemResponse(BaseModel):
+    id: int
+    product_id: int
+    sku: str
+    product_name: str
+    category: Optional[str] = None
+    product_is_active: bool
+    qty_on_hand: int
+    qty_reserved: int
+    qty_locked: int
+    qty_threshold: int
+    qty_available: int
+
+
+class WarehouseInventoryResponse(BaseModel):
+    warehouse: WarehouseResponse
+    items: List[WarehouseInventoryItemResponse]
+    total: int
+
+
+class StocktakeAdjustRequest(BaseModel):
+    qty_on_hand: int = Field(ge=0)
+
+
 class CustomerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     contact: str = Field(min_length=1, max_length=128)

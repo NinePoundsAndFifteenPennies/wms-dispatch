@@ -13,11 +13,13 @@ from modules.admin.schemas import (
     ProductListResponse,
     ProductResponse,
     ProductUpdate,
+    StocktakeAdjustRequest,
     UserCreate, 
     UserUpdate, 
     UserStatusUpdate, 
     UserResponse, 
     WarehouseCreate,
+    WarehouseInventoryResponse,
     WarehouseListResponse,
     WarehouseOptionResponse,
     WarehouseResponse,
@@ -144,6 +146,37 @@ async def remove_warehouse_image(
     service: AdminService = Depends(get_admin_service),
 ):
     return await service.remove_warehouse_image(warehouse_id)
+
+
+@warehouses_router.get("/{warehouse_id}/inventory", response_model=WarehouseInventoryResponse)
+async def get_warehouse_inventory(
+    warehouse_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_warehouse_inventory(
+        warehouse_id=warehouse_id,
+        page=page,
+        page_size=page_size,
+        search=search,
+    )
+
+
+@warehouses_router.patch("/{warehouse_id}/inventory/{inventory_id}/stocktake")
+async def adjust_inventory_stocktake(
+    warehouse_id: int,
+    inventory_id: int,
+    payload: StocktakeAdjustRequest,
+    service: AdminService = Depends(get_admin_service),
+):
+    updated = await service.adjust_warehouse_inventory_stocktake(
+        warehouse_id=warehouse_id,
+        inventory_id=inventory_id,
+        payload=payload,
+    )
+    return {"id": updated.id, "qty_on_hand": updated.qty_on_hand, "qty_available": updated.qty_available}
 
 
 @customers_router.get("", response_model=CustomerListResponse)

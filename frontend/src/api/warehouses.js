@@ -38,4 +38,14 @@ export const warehousesApi = {
   removeWarehouseImage(warehouseId) {
     return http.delete(`/admin/warehouses/${warehouseId}/image`)
   },
+
+  getWarehouseInventory(warehouseId, params) {
+    return http.get(`/admin/warehouses/${warehouseId}/inventory`, { params })
+  },
+
+  adjustWarehouseInventoryStocktake(warehouseId, inventoryId, qtyOnHand) {
+    return http.patch(`/admin/warehouses/${warehouseId}/inventory/${inventoryId}/stocktake`, {
+      qty_on_hand: qtyOnHand,
+    })
+  },
 }

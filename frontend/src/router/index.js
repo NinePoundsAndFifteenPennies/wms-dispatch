@@ -8,6 +8,7 @@ import UsersView from '../views/UsersView.vue'
 import CustomersView from '../views/CustomersView.vue'
 import ProductsView from '../views/ProductsView.vue'
 import WarehousesView from '../views/WarehousesView.vue'
+import WarehouseInventoryView from '../views/WarehouseInventoryView.vue'
 import { useAuthStore, getDefaultPathByRole, isTokenExpired } from '../stores/auth'
 import { authApi } from '../api/auth'
 
@@ -55,6 +56,12 @@ const routes = [
         path: 'warehouses',
         name: 'warehouses',
         component: WarehousesView,
+        meta: { roles: ['admin'] },
+      },
+      {
+        path: 'warehouses/:id/inventory',
+        name: 'warehouse-inventory',
+        component: WarehouseInventoryView,
         meta: { roles: ['admin'] },
       },
       {

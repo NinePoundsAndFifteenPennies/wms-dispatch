@@ -42,7 +42,13 @@
             <span v-else class="empty-thumb"><el-icon><Picture /></el-icon></span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="仓库名称" min-width="170" />
+        <el-table-column label="仓库名称" min-width="170">
+          <template #default="{ row }">
+            <el-button link type="primary" class="warehouse-link" @click="goInventory(row.id)">
+              {{ row.name }}
+            </el-button>
+          </template>
+        </el-table-column>
         <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip />
         <el-table-column prop="capacity" label="容量" width="100" />
         <el-table-column label="经纬度" min-width="180">
@@ -217,11 +223,13 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus, Search } from '@element-plus/icons-vue'
 import { warehousesApi } from '../api/warehouses'
 
 const warehouses = ref([])
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const currentPage = ref(1)
@@ -329,6 +337,10 @@ function handleSizeChange(size) {
 function handleCurrentChange(page) {
   currentPage.value = page
   fetchWarehouses()
+}
+
+function goInventory(id) {
+  router.push(`/warehouses/${id}/inventory`)
 }
 
 function resetForm() {
@@ -559,6 +571,11 @@ p {
   border-radius: 8px;
   border: 1px dashed #d4dce6;
   color: #94a3b8;
+}
+
+.warehouse-link {
+  padding: 0;
+  font-weight: 600;
 }
 
 .pagination-container {
