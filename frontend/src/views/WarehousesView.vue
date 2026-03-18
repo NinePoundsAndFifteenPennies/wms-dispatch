@@ -44,7 +44,13 @@
         </el-table-column>
         <el-table-column label="仓库名称" min-width="170">
           <template #default="{ row }">
-            <el-button link type="primary" class="warehouse-link" @click="goInventory(row.id)">
+            <el-button
+              link
+              type="primary"
+              class="warehouse-link"
+              :disabled="!row.is_active"
+              @click="goInventory(row)"
+            >
               {{ row.name }}
             </el-button>
           </template>
@@ -339,8 +345,12 @@ function handleCurrentChange(page) {
   fetchWarehouses()
 }
 
-function goInventory(id) {
-  router.push(`/warehouses/${id}/inventory`)
+function goInventory(row) {
+  if (!row?.is_active) return
+  router.push({
+    path: `/warehouses/${row.id}/inventory`,
+    query: { name: row.name || '' },
+  })
 }
 
 function resetForm() {
@@ -576,6 +586,10 @@ p {
 .warehouse-link {
   padding: 0;
   font-weight: 600;
+}
+
+.warehouse-link.is-disabled {
+  color: #94a3b8;
 }
 
 .pagination-container {

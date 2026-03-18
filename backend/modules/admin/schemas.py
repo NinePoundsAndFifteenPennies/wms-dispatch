@@ -95,6 +95,7 @@ class WarehouseInventoryItemResponse(BaseModel):
     sku: str
     product_name: str
     category: Optional[str] = None
+    product_cover_image: Optional[str] = None
     product_is_active: bool
     qty_on_hand: int
     qty_reserved: int
@@ -110,10 +111,18 @@ class WarehouseInventoryResponse(BaseModel):
 
 
 class StocktakeAdjustRequest(BaseModel):
-    qty_on_hand: int = Field(
+    qty_on_hand: Optional[int] = Field(
+        default=None,
         ge=0,
         description="盘点后的现存量，且必须不小于当前预留量与锁定量之和",
     )
+    qty_threshold: Optional[int] = Field(default=None, ge=0, description="库存阈值")
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class WarehouseInboundRequest(BaseModel):
+    product_id: int
+    qty: int = Field(gt=0, description="进货数量，必须大于 0")
     reason: Optional[str] = Field(default=None, max_length=500)
 
 

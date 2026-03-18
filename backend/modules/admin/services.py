@@ -19,6 +19,7 @@ from modules.admin.schemas import (
     UserStatusUpdate,
     UserUpdate,
     WarehouseCreate,
+    WarehouseInboundRequest,
     WarehouseInventoryItemResponse,
     WarehouseUpdate,
 )
@@ -307,6 +308,7 @@ class AdminService:
                 sku=product.sku,
                 product_name=product.name,
                 category=product.category,
+                product_cover_image=product.cover_image,
                 product_is_active=product.is_active,
                 qty_on_hand=inventory.qty_on_hand,
                 qty_reserved=inventory.qty_reserved,
@@ -326,6 +328,15 @@ class AdminService:
         payload: StocktakeAdjustRequest,
         operated_by: Optional[int] = None,
     ):
+        warehouse_result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
+        )
+        warehouse = warehouse_result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+        if not warehouse.is_active:
+            raise HTTPException(status_code=400, detail="禁用仓库不支持盘点修正")
+
         result = await self.session.execute(
             select(Inventory)
             .where(Inventory.id == inventory_id)
@@ -335,20 +346,36 @@ class AdminService:
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory record not found")
 
+        product_result = await self.session.execute(
+            select(Product).where(Product.id == inventory.product_id)
+        )
+        product = product_result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if not product.is_active:
+            raise HTTPException(status_code=400, detail="下架商品不支持盘点修正")
+
+        if payload.qty_on_hand is None and payload.qty_threshold is None:
+            raise HTTPException(status_code=400, detail="请至少修改现存量或阈值中的一项")
+
+        before_on_hand = inventory.qty_on_hand
+        before_threshold = inventory.qty_threshold
+        after_on_hand = before_on_hand if payload.qty_on_hand is None else payload.qty_on_hand
+        after_threshold = before_threshold if payload.qty_threshold is None else payload.qty_threshold
+
         min_on_hand = inventory.qty_reserved + inventory.qty_locked
-        if payload.qty_on_hand < min_on_hand:
+        if after_on_hand < min_on_hand:
             raise HTTPException(
                 status_code=400,
                 detail=f"盘点后的现存量不能低于预留量与锁定量之和（{min_on_hand}）",
             )
 
-        before_on_hand = inventory.qty_on_hand
         before_reserved = inventory.qty_reserved
         before_locked = inventory.qty_locked
-        after_on_hand = payload.qty_on_hand
         delta_on_hand = after_on_hand - before_on_hand
 
-        inventory.qty_on_hand = payload.qty_on_hand
+        inventory.qty_on_hand = after_on_hand
+        inventory.qty_threshold = after_threshold
 
         try:
             await self.session.flush()
@@ -448,6 +475,160 @@ class AdminService:
         except Exception as e:
             await self.session.rollback()
             raise HTTPException(status_code=400, detail=f"Stocktake adjust failed: {str(e)}")
+
+    async def warehouse_inventory_inbound(
+        self,
+        warehouse_id: int,
+        payload: WarehouseInboundRequest,
+        operated_by: Optional[int] = None,
+    ):
+        warehouse_result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
+        )
+        warehouse = warehouse_result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found")
+        if not warehouse.is_active:
+            raise HTTPException(status_code=400, detail="禁用仓库不支持进货")
+
+        product_result = await self.session.execute(
+            select(Product).where(Product.id == payload.product_id)
+        )
+        product = product_result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if not product.is_active:
+            raise HTTPException(status_code=400, detail="下架商品不能进货")
+
+        inventory_result = await self.session.execute(
+            select(Inventory)
+            .where(Inventory.warehouse_id == warehouse_id)
+            .where(Inventory.product_id == payload.product_id)
+        )
+        inventory = inventory_result.scalar_one_or_none()
+
+        if not inventory:
+            inventory = Inventory(
+                warehouse_id=warehouse_id,
+                product_id=payload.product_id,
+                qty_on_hand=0,
+                qty_reserved=0,
+                qty_locked=0,
+                qty_threshold=0,
+            )
+            self.session.add(inventory)
+            await self.session.flush()
+
+        before_on_hand = inventory.qty_on_hand
+        before_reserved = inventory.qty_reserved
+        before_locked = inventory.qty_locked
+        after_on_hand = before_on_hand + payload.qty
+
+        inventory.qty_on_hand = after_on_hand
+
+        reason_prefix = payload.reason.strip() if payload.reason else ""
+        inbound_reason = f"{reason_prefix}，进了什么货" if reason_prefix else "进了什么货"
+
+        try:
+            await self.session.flush()
+
+            stocktake_insert = await self.session.execute(
+                text(
+                    """
+                    INSERT INTO stocktakes (
+                        inventory_id,
+                        before_on_hand,
+                        after_on_hand,
+                        delta_on_hand,
+                        reason
+                    ) VALUES (
+                        :inventory_id,
+                        :before_on_hand,
+                        :after_on_hand,
+                        :delta_on_hand,
+                        :reason
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "inventory_id": inventory.id,
+                    "before_on_hand": before_on_hand,
+                    "after_on_hand": after_on_hand,
+                    "delta_on_hand": payload.qty,
+                    "reason": inbound_reason,
+                },
+            )
+            stocktake_id = stocktake_insert.scalar_one()
+
+            movement_insert = await self.session.execute(
+                text(
+                    """
+                    INSERT INTO inventory_movements (
+                        inventory_id,
+                        warehouse_id,
+                        product_id,
+                        change_type,
+                        delta_on_hand,
+                        delta_reserved,
+                        delta_locked,
+                        before_on_hand,
+                        before_reserved,
+                        before_locked,
+                        after_on_hand,
+                        after_reserved,
+                        after_locked,
+                        related_type,
+                        related_id,
+                        operated_by
+                    ) VALUES (
+                        :inventory_id,
+                        :warehouse_id,
+                        :product_id,
+                        :change_type,
+                        :delta_on_hand,
+                        :delta_reserved,
+                        :delta_locked,
+                        :before_on_hand,
+                        :before_reserved,
+                        :before_locked,
+                        :after_on_hand,
+                        :after_reserved,
+                        :after_locked,
+                        :related_type,
+                        :related_id,
+                        :operated_by
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "inventory_id": inventory.id,
+                    "warehouse_id": warehouse_id,
+                    "product_id": payload.product_id,
+                    "change_type": "inbound_confirm",
+                    "delta_on_hand": payload.qty,
+                    "delta_reserved": 0,
+                    "delta_locked": 0,
+                    "before_on_hand": before_on_hand,
+                    "before_reserved": before_reserved,
+                    "before_locked": before_locked,
+                    "after_on_hand": after_on_hand,
+                    "after_reserved": before_reserved,
+                    "after_locked": before_locked,
+                    "related_type": "stocktake",
+                    "related_id": stocktake_id,
+                    "operated_by": operated_by,
+                },
+            )
+            movement_id = movement_insert.scalar_one()
+
+            await self.session.commit()
+            await self.session.refresh(inventory)
+            return {"inventory": inventory, "movement_id": movement_id}
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=f"Inbound failed: {str(e)}")
 
     async def remove_warehouse_image(self, warehouse_id: int) -> Warehouse:
         result = await self.session.execute(

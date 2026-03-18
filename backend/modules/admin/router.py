@@ -14,6 +14,7 @@ from modules.admin.schemas import (
     ProductResponse,
     ProductUpdate,
     StocktakeAdjustRequest,
+    WarehouseInboundRequest,
     UserCreate, 
     UserUpdate, 
     UserStatusUpdate, 
@@ -183,8 +184,31 @@ async def adjust_inventory_stocktake(
     return {
         "id": inventory.id,
         "qty_on_hand": inventory.qty_on_hand,
+        "qty_threshold": inventory.qty_threshold,
         "qty_available": inventory.qty_available,
         "stocktake_id": updated["stocktake_id"],
+    }
+
+
+@warehouses_router.post("/{warehouse_id}/inventory/inbound")
+async def warehouse_inventory_inbound(
+    warehouse_id: int,
+    payload: WarehouseInboundRequest,
+    service: AdminService = Depends(get_admin_service),
+    current_user=Depends(get_current_user_required),
+):
+    updated = await service.warehouse_inventory_inbound(
+        warehouse_id=warehouse_id,
+        payload=payload,
+        operated_by=current_user.get("id"),
+    )
+    inventory = updated["inventory"]
+    return {
+        "id": inventory.id,
+        "qty_on_hand": inventory.qty_on_hand,
+        "qty_threshold": inventory.qty_threshold,
+        "qty_available": inventory.qty_available,
+        "movement_id": updated["movement_id"],
     }
 
 
