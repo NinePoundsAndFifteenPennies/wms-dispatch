@@ -124,6 +124,19 @@ class AdminService:
         await self.session.refresh(user)
         return user
 
+    async def batch_disable_users(self, ids: List[int]) -> int:
+        result = await self.session.execute(
+            select(User).where(User.id.in_(ids), User.is_active.is_(True), User.role != "admin")
+        )
+        users = result.scalars().all()
+        if not users:
+            return 0
+
+        for user in users:
+            user.is_active = False
+        await self.session.commit()
+        return len(users)
+
     async def list_warehouses(self) -> List[Warehouse]:
         result = await self.session.execute(select(Warehouse).order_by(Warehouse.id.asc()))
         return result.scalars().all()
@@ -190,11 +203,8 @@ class AdminService:
         if not warehouse:
             raise HTTPException(status_code=404, detail="Warehouse not found")
 
-        image_to_delete = warehouse.cover_image
-        warehouse.cover_image = None
         warehouse.is_active = False
         await self.session.commit()
-        delete_resource_file_by_url(image_to_delete)
 
     async def update_warehouse_status(self, warehouse_id: int, is_active: bool) -> Warehouse:
         result = await self.session.execute(select(Warehouse).where(Warehouse.id == warehouse_id))
@@ -216,9 +226,6 @@ class AdminService:
             return 0
 
         for warehouse in warehouses:
-            if warehouse.cover_image:
-                delete_resource_file_by_url(warehouse.cover_image)
-                warehouse.cover_image = None
             warehouse.is_active = False
         await self.session.commit()
         return len(warehouses)
@@ -422,23 +429,14 @@ class AdminService:
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        image_to_delete = product.cover_image
-        product.cover_image = None
         product.is_active = False
         await self.session.commit()
-        delete_resource_file_by_url(image_to_delete)
 
     async def update_product_status(self, product_id: int, is_active: bool) -> Product:
         result = await self.session.execute(select(Product).where(Product.id == product_id))
         product = result.scalar_one_or_none()
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
-
-        # Keep soft-delete semantics: disabling a product also removes its image reference and file.
-        if not is_active and product.cover_image:
-            image_to_delete = product.cover_image
-            product.cover_image = None
-            delete_resource_file_by_url(image_to_delete)
 
         product.is_active = is_active
         await self.session.commit()

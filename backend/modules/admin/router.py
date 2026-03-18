@@ -66,6 +66,12 @@ async def update_user_status(
     return await service.update_user_status(user_id, status_update)
 
 
+@users_router.post("/batch-disable")
+async def batch_disable_users(payload: BatchDeleteRequest, service: AdminService = Depends(get_admin_service)):
+    disabled = await service.batch_disable_users(payload.ids)
+    return {"disabled": disabled}
+
+
 @warehouses_router.get("", response_model=List[WarehouseResponse])
 async def list_warehouses(service: AdminService = Depends(get_admin_service)):
     return await service.list_warehouses()

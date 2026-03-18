@@ -216,7 +216,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="imageDialogVisible" width="520px" :title="`图片管理 - ${imageTargetName || ''}`">
+    <el-dialog v-model="imageDialogVisible" width="520px" :title="`图片管理 - ${imageTargetName || ''}`" @closed="onImageDialogClosed">
       <div class="image-panel">
         <div class="image-preview-box">
           <el-image
@@ -231,6 +231,7 @@
         </div>
 
         <el-upload
+          accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
           :auto-upload="false"
           :show-file-list="true"
           :limit="1"
@@ -247,7 +248,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="imageDialogVisible = false">取消</el-button>
+        <el-button @click="closeImageDialog">取消</el-button>
         <el-button type="primary" :loading="savingImage" @click="saveImageChanges">保存图片变更</el-button>
       </template>
     </el-dialog>
@@ -280,6 +281,7 @@ const imageDialogVisible = ref(false)
 const imageTargetProductId = ref(null)
 const imageTargetName = ref('')
 const imagePreviewUrl = ref('')
+const imagePreviewObjectUrl = ref('')
 const imageOriginalUrl = ref('')
 const imageSelectedFile = ref(null)
 const imageRemoveRequested = ref(false)
@@ -325,13 +327,24 @@ function beforeImageUpload(file) {
   const typeOk = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)
   if (!typeOk) {
     ElMessage.error('仅支持 JPG/PNG/WEBP/GIF 图片')
-    return false
   }
-  return false
+  return typeOk
+}
+
+function revokeImagePreviewObjectUrl() {
+  if (imagePreviewObjectUrl.value) {
+    URL.revokeObjectURL(imagePreviewObjectUrl.value)
+    imagePreviewObjectUrl.value = ''
+  }
 }
 
 function onImageDialogFileChange(file) {
   imageSelectedFile.value = file.raw || null
+  if (file.raw) {
+    revokeImagePreviewObjectUrl()
+    imagePreviewObjectUrl.value = URL.createObjectURL(file.raw)
+    imagePreviewUrl.value = imagePreviewObjectUrl.value
+  }
   imageRemoveRequested.value = false
 }
 
@@ -393,15 +406,16 @@ function openEditDialog(row) {
   form.category = row.category || ''
   form.unit_weight = Number(row.unit_weight || 0)
   form.unit_of_measure = row.unit_of_measure || 'piece'
-  form.req_skill_picking = row.req_skill_picking || 0
-  form.req_skill_staging = row.req_skill_staging || 0
-  form.req_skill_shipping = row.req_skill_shipping || 0
+  form.req_skill_picking = Number(row.req_skill_picking || 0)
+  form.req_skill_staging = Number(row.req_skill_staging || 0)
+  form.req_skill_shipping = Number(row.req_skill_shipping || 0)
   form.description = row.description || ''
   dialogVisible.value = true
   if (formRef.value) formRef.value.clearValidate()
 }
 
 function openImageDialog(row) {
+  revokeImagePreviewObjectUrl()
   imageTargetProductId.value = row.id
   imageTargetName.value = row.name
   imagePreviewUrl.value = row.cover_image || ''
@@ -418,9 +432,9 @@ function openDetailDialog(row) {
   detailForm.category = row.category || ''
   detailForm.unit_weight = Number(row.unit_weight || 0)
   detailForm.unit_of_measure = row.unit_of_measure || 'piece'
-  detailForm.req_skill_picking = row.req_skill_picking || 0
-  detailForm.req_skill_staging = row.req_skill_staging || 0
-  detailForm.req_skill_shipping = row.req_skill_shipping || 0
+  detailForm.req_skill_picking = Number(row.req_skill_picking || 0)
+  detailForm.req_skill_staging = Number(row.req_skill_staging || 0)
+  detailForm.req_skill_shipping = Number(row.req_skill_shipping || 0)
   detailForm.description = row.description || ''
   detailForm.cover_image = row.cover_image || ''
   detailForm.is_active = row.is_active
@@ -429,9 +443,18 @@ function openDetailDialog(row) {
 }
 
 function markRemoveImage() {
+  revokeImagePreviewObjectUrl()
   imageRemoveRequested.value = true
   imageSelectedFile.value = null
   imagePreviewUrl.value = ''
+}
+
+function closeImageDialog() {
+  imageDialogVisible.value = false
+}
+
+function onImageDialogClosed() {
+  revokeImagePreviewObjectUrl()
 }
 
 async function saveImageChanges() {
@@ -453,6 +476,7 @@ async function saveImageChanges() {
     }
 
     imageDialogVisible.value = false
+    revokeImagePreviewObjectUrl()
     await fetchProducts()
     if (detailVisible.value && detailEditingId.value === imageTargetProductId.value) {
       const latest = products.value.find((item) => item.id === detailEditingId.value)
@@ -583,12 +607,19 @@ p {
 }
 
 .thumb {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 8px;
+  border: 1px solid #dce6ef;
 }
 
 .empty-thumb {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px dashed #d4dce6;
   color: #94a3b8;
 }
 

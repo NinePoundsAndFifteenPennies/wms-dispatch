@@ -57,6 +57,7 @@
         </el-table-column>
         <el-table-column label="操作" width="210">
           <template #default="{ row }">
+            <el-button type="success" link @click="openDetailDialog(row)">详情</el-button>
             <el-button type="success" link @click="openImageDialog(row)">图片</el-button>
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
           </template>
@@ -109,7 +110,73 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="imageDialogVisible" width="520px" :title="`仓库图片 - ${imageTargetName || ''}`">
+    <el-dialog v-model="detailVisible" title="仓库详情" width="760px">
+      <div class="detail-grid">
+        <el-card shadow="never" class="detail-card image-card">
+          <template #header>
+            <span>仓库图片</span>
+          </template>
+          <div class="detail-image-wrap">
+            <el-image
+              v-if="detailForm.cover_image"
+              :src="detailForm.cover_image"
+              fit="cover"
+              class="detail-image"
+              :preview-src-list="[detailForm.cover_image]"
+              preview-teleported
+            />
+            <div v-else class="detail-image-placeholder">
+              <el-icon><Picture /></el-icon>
+              <span>暂无图片</span>
+            </div>
+          </div>
+          <el-button style="margin-top: 10px" @click="openImageDialog({ id: detailEditingId, name: detailForm.name, cover_image: detailForm.cover_image })">
+            管理图片
+          </el-button>
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <span>基础信息</span>
+          </template>
+          <el-form ref="detailFormRef" :model="detailForm" :rules="rules" label-width="110px">
+            <el-form-item label="仓库名称" prop="name">
+              <el-input v-model="detailForm.name" />
+            </el-form-item>
+            <el-form-item label="仓库地址" prop="address">
+              <el-input v-model="detailForm.address" type="textarea" :rows="2" />
+            </el-form-item>
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="纬度" prop="latitude">
+                  <el-input-number v-model="detailForm.latitude" :step="0.000001" :precision="6" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="经度" prop="longitude">
+                  <el-input-number v-model="detailForm.longitude" :step="0.000001" :precision="6" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="容量" prop="capacity">
+              <el-input-number v-model="detailForm.capacity" :min="0" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-switch v-model="detailForm.is_active" />
+            </el-form-item>
+            <el-form-item label="备注" prop="description">
+              <el-input v-model="detailForm.description" type="textarea" :rows="3" />
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </div>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="imageDialogVisible" width="520px" :title="`图片管理 - ${imageTargetName || ''}`" @closed="onImageDialogClosed">
       <div class="image-panel">
         <div class="image-preview-box">
           <el-image
@@ -124,6 +191,7 @@
         </div>
 
         <el-upload
+          accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
           :auto-upload="false"
           :show-file-list="true"
           :limit="1"
@@ -140,7 +208,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="imageDialogVisible = false">取消</el-button>
+        <el-button @click="closeImageDialog">取消</el-button>
         <el-button type="primary" :loading="savingImage" @click="saveImageChanges">保存图片变更</el-button>
       </template>
     </el-dialog>
@@ -166,6 +234,10 @@ const dialogVisible = ref(false)
 const dialogMode = ref('create')
 const editingId = ref(null)
 const formRef = ref()
+const detailVisible = ref(false)
+const detailSaving = ref(false)
+const detailEditingId = ref(null)
+const detailFormRef = ref()
 const form = reactive({
   name: '',
   address: '',
@@ -174,11 +246,22 @@ const form = reactive({
   capacity: 0,
   description: '',
 })
+const detailForm = reactive({
+  name: '',
+  address: '',
+  latitude: null,
+  longitude: null,
+  capacity: 0,
+  description: '',
+  cover_image: '',
+  is_active: true,
+})
 
 const imageDialogVisible = ref(false)
 const imageTargetWarehouseId = ref(null)
 const imageTargetName = ref('')
 const imagePreviewUrl = ref('')
+const imagePreviewObjectUrl = ref('')
 const imageOriginalUrl = ref('')
 const imageSelectedFile = ref(null)
 const imageRemoveRequested = ref(false)
@@ -197,13 +280,24 @@ function beforeImageUpload(file) {
   const typeOk = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)
   if (!typeOk) {
     ElMessage.error('仅支持 JPG/PNG/WEBP/GIF 图片')
-    return false
   }
-  return false
+  return typeOk
+}
+
+function revokeImagePreviewObjectUrl() {
+  if (imagePreviewObjectUrl.value) {
+    URL.revokeObjectURL(imagePreviewObjectUrl.value)
+    imagePreviewObjectUrl.value = ''
+  }
 }
 
 function onImageDialogFileChange(file) {
   imageSelectedFile.value = file.raw || null
+  if (file.raw) {
+    revokeImagePreviewObjectUrl()
+    imagePreviewObjectUrl.value = URL.createObjectURL(file.raw)
+    imagePreviewUrl.value = imagePreviewObjectUrl.value
+  }
   imageRemoveRequested.value = false
 }
 
@@ -268,6 +362,7 @@ function openEditDialog(row) {
 }
 
 function openImageDialog(row) {
+  revokeImagePreviewObjectUrl()
   imageTargetWarehouseId.value = row.id
   imageTargetName.value = row.name
   imagePreviewUrl.value = row.cover_image || ''
@@ -277,10 +372,33 @@ function openImageDialog(row) {
   imageDialogVisible.value = true
 }
 
+function openDetailDialog(row) {
+  detailEditingId.value = row.id
+  detailForm.name = row.name
+  detailForm.address = row.address || ''
+  detailForm.latitude = row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null
+  detailForm.longitude = row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null
+  detailForm.capacity = row.capacity || 0
+  detailForm.description = row.description || ''
+  detailForm.cover_image = row.cover_image || ''
+  detailForm.is_active = row.is_active
+  detailVisible.value = true
+  if (detailFormRef.value) detailFormRef.value.clearValidate()
+}
+
 function markRemoveImage() {
+  revokeImagePreviewObjectUrl()
   imageRemoveRequested.value = true
   imageSelectedFile.value = null
   imagePreviewUrl.value = ''
+}
+
+function closeImageDialog() {
+  imageDialogVisible.value = false
+}
+
+function onImageDialogClosed() {
+  revokeImagePreviewObjectUrl()
 }
 
 async function saveImageChanges() {
@@ -302,7 +420,12 @@ async function saveImageChanges() {
     }
 
     imageDialogVisible.value = false
-    fetchWarehouses()
+    revokeImagePreviewObjectUrl()
+    await fetchWarehouses()
+    if (detailVisible.value && detailEditingId.value === imageTargetWarehouseId.value) {
+      const latest = warehouses.value.find((item) => item.id === detailEditingId.value)
+      detailForm.cover_image = latest?.cover_image || ''
+    }
   } finally {
     savingImage.value = false
   }
@@ -333,6 +456,29 @@ async function saveWarehouse() {
     fetchWarehouses()
   } finally {
     saving.value = false
+  }
+}
+
+async function saveDetail() {
+  const valid = await detailFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  detailSaving.value = true
+  try {
+    await warehousesApi.updateWarehouse(detailEditingId.value, {
+      name: detailForm.name,
+      address: detailForm.address,
+      latitude: detailForm.latitude,
+      longitude: detailForm.longitude,
+      capacity: detailForm.capacity ?? 0,
+      description: detailForm.description || null,
+    })
+    await warehousesApi.updateWarehouseStatus(detailEditingId.value, detailForm.is_active)
+    ElMessage.success('详情保存成功')
+    detailVisible.value = false
+    fetchWarehouses()
+  } finally {
+    detailSaving.value = false
   }
 }
 
@@ -426,6 +572,43 @@ p {
   gap: 12px;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+}
+
+.detail-card {
+  border-radius: 12px;
+}
+
+.image-card {
+  align-self: start;
+}
+
+.detail-image-wrap {
+  width: 100%;
+  min-height: 220px;
+  border-radius: 10px;
+  border: 1px dashed #cbd5e1;
+  display: grid;
+  place-items: center;
+}
+
+.detail-image {
+  width: 100%;
+  min-height: 220px;
+  max-height: 300px;
+  border-radius: 10px;
+}
+
+.detail-image-placeholder {
+  color: #94a3b8;
+  display: grid;
+  gap: 8px;
+  place-items: center;
+}
+
 .image-preview-box {
   border: 1px dashed #d5dee9;
   border-radius: 12px;
@@ -461,6 +644,10 @@ p {
   .toolbar-actions {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
