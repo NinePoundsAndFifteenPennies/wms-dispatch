@@ -114,6 +114,7 @@ class StocktakeAdjustRequest(BaseModel):
         ge=0,
         description="盘点后的现存量，且必须不小于当前预留量与锁定量之和",
     )
+    reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class CustomerCreate(BaseModel):

@@ -28,6 +28,7 @@ from modules.admin.schemas import (
 )
 from modules.admin.services import AdminService
 from modules.admin.dependencies import get_admin_service
+from modules.auth.dependencies import get_current_user_required
 
 router = APIRouter()
 users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -170,13 +171,21 @@ async def adjust_inventory_stocktake(
     inventory_id: int,
     payload: StocktakeAdjustRequest,
     service: AdminService = Depends(get_admin_service),
+    current_user=Depends(get_current_user_required),
 ):
     updated = await service.adjust_warehouse_inventory_stocktake(
         warehouse_id=warehouse_id,
         inventory_id=inventory_id,
         payload=payload,
+        operated_by=current_user.get("id"),
     )
-    return {"id": updated.id, "qty_on_hand": updated.qty_on_hand, "qty_available": updated.qty_available}
+    inventory = updated["inventory"]
+    return {
+        "id": inventory.id,
+        "qty_on_hand": inventory.qty_on_hand,
+        "qty_available": inventory.qty_available,
+        "stocktake_id": updated["stocktake_id"],
+    }
 
 
 @customers_router.get("", response_model=CustomerListResponse)

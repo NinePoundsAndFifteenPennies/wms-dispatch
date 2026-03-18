@@ -1,7 +1,7 @@
 ﻿from typing import List, Optional
 import bcrypt
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer import Customer
@@ -324,6 +324,7 @@ class AdminService:
         warehouse_id: int,
         inventory_id: int,
         payload: StocktakeAdjustRequest,
+        operated_by: Optional[int] = None,
     ):
         result = await self.session.execute(
             select(Inventory)
@@ -341,10 +342,112 @@ class AdminService:
                 detail=f"盘点后的现存量不能低于预留量与锁定量之和（{min_on_hand}）",
             )
 
+        before_on_hand = inventory.qty_on_hand
+        before_reserved = inventory.qty_reserved
+        before_locked = inventory.qty_locked
+        after_on_hand = payload.qty_on_hand
+        delta_on_hand = after_on_hand - before_on_hand
+
         inventory.qty_on_hand = payload.qty_on_hand
-        await self.session.commit()
-        await self.session.refresh(inventory)
-        return inventory
+
+        try:
+            await self.session.flush()
+
+            stocktake_insert = await self.session.execute(
+                text(
+                    """
+                    INSERT INTO stocktakes (
+                        inventory_id,
+                        before_on_hand,
+                        after_on_hand,
+                        delta_on_hand,
+                        reason
+                    ) VALUES (
+                        :inventory_id,
+                        :before_on_hand,
+                        :after_on_hand,
+                        :delta_on_hand,
+                        :reason
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "inventory_id": inventory.id,
+                    "before_on_hand": before_on_hand,
+                    "after_on_hand": after_on_hand,
+                    "delta_on_hand": delta_on_hand,
+                    "reason": payload.reason,
+                },
+            )
+            stocktake_id = stocktake_insert.scalar_one()
+
+            await self.session.execute(
+                text(
+                    """
+                    INSERT INTO inventory_movements (
+                        inventory_id,
+                        warehouse_id,
+                        product_id,
+                        change_type,
+                        delta_on_hand,
+                        delta_reserved,
+                        delta_locked,
+                        before_on_hand,
+                        before_reserved,
+                        before_locked,
+                        after_on_hand,
+                        after_reserved,
+                        after_locked,
+                        related_type,
+                        related_id,
+                        operated_by
+                    ) VALUES (
+                        :inventory_id,
+                        :warehouse_id,
+                        :product_id,
+                        :change_type,
+                        :delta_on_hand,
+                        :delta_reserved,
+                        :delta_locked,
+                        :before_on_hand,
+                        :before_reserved,
+                        :before_locked,
+                        :after_on_hand,
+                        :after_reserved,
+                        :after_locked,
+                        :related_type,
+                        :related_id,
+                        :operated_by
+                    )
+                    """
+                ),
+                {
+                    "inventory_id": inventory.id,
+                    "warehouse_id": warehouse_id,
+                    "product_id": inventory.product_id,
+                    "change_type": "stocktake_adjust",
+                    "delta_on_hand": delta_on_hand,
+                    "delta_reserved": 0,
+                    "delta_locked": 0,
+                    "before_on_hand": before_on_hand,
+                    "before_reserved": before_reserved,
+                    "before_locked": before_locked,
+                    "after_on_hand": after_on_hand,
+                    "after_reserved": before_reserved,
+                    "after_locked": before_locked,
+                    "related_type": "stocktake",
+                    "related_id": stocktake_id,
+                    "operated_by": operated_by,
+                },
+            )
+
+            await self.session.commit()
+            await self.session.refresh(inventory)
+            return {"inventory": inventory, "stocktake_id": stocktake_id}
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=f"Stocktake adjust failed: {str(e)}")
 
     async def remove_warehouse_image(self, warehouse_id: int) -> Warehouse:
         result = await self.session.execute(
