@@ -163,6 +163,8 @@ async function fetchInventory() {
     Object.assign(warehouse, data.warehouse || {})
     items.value = data.items || []
     total.value = data.total || 0
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '获取仓库库存失败')
   } finally {
     loading.value = false
   }
@@ -204,6 +206,8 @@ async function submitAdjust() {
     ElMessage.success('盘点修正成功')
     adjustDialogVisible.value = false
     await fetchInventory()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '盘点修正失败')
   } finally {
     savingAdjust.value = false
   }
