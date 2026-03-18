@@ -122,17 +122,38 @@
         <el-row :gutter="12">
           <el-col :span="8">
             <el-form-item label="分拣要求" prop="req_skill_picking">
-              <el-input-number v-model="form.req_skill_picking" :min="0" :max="10" style="width: 100%" />
+              <el-input-number
+                v-model="form.req_skill_picking"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="备货要求" prop="req_skill_staging">
-              <el-input-number v-model="form.req_skill_staging" :min="0" :max="10" style="width: 100%" />
+              <el-input-number
+                v-model="form.req_skill_staging"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="发货要求" prop="req_skill_shipping">
-              <el-input-number v-model="form.req_skill_shipping" :min="0" :max="10" style="width: 100%" />
+              <el-input-number
+                v-model="form.req_skill_shipping"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -193,13 +214,31 @@
               <el-input-number v-model="detailForm.unit_weight" :min="0" :precision="2" :step="0.1" style="width: 100%" />
             </el-form-item>
             <el-form-item label="分拣要求" prop="req_skill_picking">
-              <el-input-number v-model="detailForm.req_skill_picking" :min="0" :max="10" />
+              <el-input-number
+                v-model="detailForm.req_skill_picking"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+              />
             </el-form-item>
             <el-form-item label="备货要求" prop="req_skill_staging">
-              <el-input-number v-model="detailForm.req_skill_staging" :min="0" :max="10" />
+              <el-input-number
+                v-model="detailForm.req_skill_staging"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+              />
             </el-form-item>
             <el-form-item label="发货要求" prop="req_skill_shipping">
-              <el-input-number v-model="detailForm.req_skill_shipping" :min="0" :max="10" />
+              <el-input-number
+                v-model="detailForm.req_skill_shipping"
+                :min="MIN_SKILL_LEVEL"
+                :max="MAX_SKILL_LEVEL"
+                :step="1"
+                :precision="0"
+              />
             </el-form-item>
             <el-form-item label="状态">
               <el-switch v-model="detailForm.is_active" />
@@ -319,6 +358,16 @@ const rules = {
   unit_of_measure: [{ required: true, message: '请输入计量单位', trigger: 'blur' }],
 }
 
+const MIN_SKILL_LEVEL = 0
+const MAX_SKILL_LEVEL = 10
+
+function normalizeSkill(value) {
+  const parsed = Number(value)
+  // 对非法输入做兜底，避免提交到后端时触发类型错误。
+  if (Number.isNaN(parsed)) return MIN_SKILL_LEVEL
+  return Math.min(MAX_SKILL_LEVEL, Math.max(MIN_SKILL_LEVEL, Math.trunc(parsed)))
+}
+
 function onSelectionChange(selection) {
   selectedIds.value = selection.map((item) => item.id)
 }
@@ -406,9 +455,9 @@ function openEditDialog(row) {
   form.category = row.category || ''
   form.unit_weight = Number(row.unit_weight || 0)
   form.unit_of_measure = row.unit_of_measure || 'piece'
-  form.req_skill_picking = Number(row.req_skill_picking || 0)
-  form.req_skill_staging = Number(row.req_skill_staging || 0)
-  form.req_skill_shipping = Number(row.req_skill_shipping || 0)
+  form.req_skill_picking = normalizeSkill(row.req_skill_picking)
+  form.req_skill_staging = normalizeSkill(row.req_skill_staging)
+  form.req_skill_shipping = normalizeSkill(row.req_skill_shipping)
   form.description = row.description || ''
   dialogVisible.value = true
   if (formRef.value) formRef.value.clearValidate()
@@ -432,9 +481,9 @@ function openDetailDialog(row) {
   detailForm.category = row.category || ''
   detailForm.unit_weight = Number(row.unit_weight || 0)
   detailForm.unit_of_measure = row.unit_of_measure || 'piece'
-  detailForm.req_skill_picking = Number(row.req_skill_picking || 0)
-  detailForm.req_skill_staging = Number(row.req_skill_staging || 0)
-  detailForm.req_skill_shipping = Number(row.req_skill_shipping || 0)
+  detailForm.req_skill_picking = normalizeSkill(row.req_skill_picking)
+  detailForm.req_skill_staging = normalizeSkill(row.req_skill_staging)
+  detailForm.req_skill_shipping = normalizeSkill(row.req_skill_shipping)
   detailForm.description = row.description || ''
   detailForm.cover_image = row.cover_image || ''
   detailForm.is_active = row.is_active
@@ -499,9 +548,9 @@ async function saveProduct() {
       category: form.category || null,
       unit_weight: form.unit_weight || null,
       unit_of_measure: form.unit_of_measure,
-      req_skill_picking: form.req_skill_picking,
-      req_skill_staging: form.req_skill_staging,
-      req_skill_shipping: form.req_skill_shipping,
+      req_skill_picking: normalizeSkill(form.req_skill_picking),
+      req_skill_staging: normalizeSkill(form.req_skill_staging),
+      req_skill_shipping: normalizeSkill(form.req_skill_shipping),
       description: form.description || null,
     }
 
@@ -541,9 +590,9 @@ async function saveDetail() {
       category: detailForm.category || null,
       unit_weight: detailForm.unit_weight || null,
       unit_of_measure: detailForm.unit_of_measure,
-      req_skill_picking: detailForm.req_skill_picking,
-      req_skill_staging: detailForm.req_skill_staging,
-      req_skill_shipping: detailForm.req_skill_shipping,
+      req_skill_picking: normalizeSkill(detailForm.req_skill_picking),
+      req_skill_staging: normalizeSkill(detailForm.req_skill_staging),
+      req_skill_shipping: normalizeSkill(detailForm.req_skill_shipping),
       description: detailForm.description || null,
     })
     await productsApi.updateProductStatus(detailEditingId.value, detailForm.is_active)

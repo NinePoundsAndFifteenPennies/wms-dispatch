@@ -247,6 +247,32 @@ PATCH /api/admin/users/{id}/status
 
 ---
 
+### 批量禁用用户
+
+批量将用户设为禁用状态（软禁用，不删除数据）。
+
+```http
+POST /api/admin/users/batch-disable
+```
+
+**请求体 (JSON):**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| ids | int[] | 是 | 需要禁用的用户 ID 列表 |
+
+**成功响应:** `200 OK`
+```json
+{
+  "disabled": 3
+}
+```
+
+**说明:**
+- 管理员账号不会被批量禁用（后端会自动忽略 `role="admin"` 账号）。
+
+---
+
 ### 获取全部仓储列表
 
 获取用于选项下拉等用途的基础地理仓储网点信息。
@@ -312,4 +338,3 @@ DELETE /api/admin/products/{product_id}/image
 - 上传图片：`POST /image`，`multipart/form-data`，字段名为 `image`。
 - 移除图片：`DELETE /image`，会将数据库 `cover_image` 清空，并删除服务器文件。
 - 更换图片：重复调用上传接口即可，系统会替换 URL 并清理旧图文件。
-

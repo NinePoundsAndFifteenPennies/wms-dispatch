@@ -53,7 +53,7 @@
         </el-table-column>
         <el-table-column label="操作" width="170">
           <template #default="{ row }">
-            <el-button type="success" link :disabled="!canEditUser(row)" @click="openDetailDialog(row)">详情</el-button>
+            <el-button type="success" link @click="openDetailDialog(row)">详情</el-button>
             <el-button type="primary" link :disabled="!canEditUser(row)" @click="openEditDialog(row)">编辑</el-button>
           </template>
         </el-table-column>
@@ -135,32 +135,38 @@
               </div>
             </el-form-item>
             <el-form-item label="用户名" prop="username">
-              <el-input v-model="detailForm.username" />
+              <el-input v-model="detailForm.username" :disabled="detailReadOnly" />
             </el-form-item>
             <el-form-item label="邮箱" prop="email">
-              <el-input v-model="detailForm.email" />
+              <el-input v-model="detailForm.email" :disabled="detailReadOnly" />
             </el-form-item>
             <el-form-item label="角色" prop="role">
-              <el-select v-model="detailForm.role" style="width: 100%">
+              <el-select v-model="detailForm.role" style="width: 100%" :disabled="detailReadOnly">
                 <el-option label="admin" value="admin" />
                 <el-option label="dispatcher" value="dispatcher" />
                 <el-option label="worker" value="worker" />
               </el-select>
             </el-form-item>
             <el-form-item label="仓库" prop="warehouse_id" v-if="detailForm.role !== 'admin'">
-              <el-select v-model="detailForm.warehouse_id" placeholder="选择仓库" style="width: 100%" teleported="false">
+              <el-select
+                v-model="detailForm.warehouse_id"
+                placeholder="选择仓库"
+                style="width: 100%"
+                teleported="false"
+                :disabled="detailReadOnly"
+              >
                 <el-option v-for="wh in warehouses" :key="wh.id" :label="wh.name" :value="wh.id" />
               </el-select>
             </el-form-item>
             <template v-if="detailForm.role === 'worker'">
               <el-form-item label="分拣技能" prop="skill_picking">
-                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
               <el-form-item label="备货技能" prop="skill_staging">
-                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
               <el-form-item label="发货技能" prop="skill_shipping">
-                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" />
+                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" :disabled="detailReadOnly" />
               </el-form-item>
             </template>
           </el-form>
@@ -179,14 +185,14 @@
       </div>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
+        <el-button type="primary" :disabled="detailReadOnly" :loading="detailSaving" @click="saveDetail">保存详情</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, UserFilled } from '@element-plus/icons-vue'
 import { adminApi } from '../api/admin'
@@ -209,6 +215,7 @@ const dialogMode = ref('create')
 const editingId = ref(null)
 const detailVisible = ref(false)
 const detailEditingId = ref(null)
+const detailIsOtherAdmin = ref(false)
 const detailSaving = ref(false)
 const formRef = ref()
 const detailFormRef = ref()
@@ -284,6 +291,8 @@ function getWarehouseName(id) {
 function canEditUser(row) {
   return !(row.role === 'admin' && row.id !== authStore.currentUser?.id)
 }
+
+const detailReadOnly = computed(() => detailIsOtherAdmin.value)
 
 function isSelectableUser(row) {
   return row.role !== 'admin'
@@ -378,10 +387,7 @@ function openEditDialog(row) {
 }
 
 function openDetailDialog(row) {
-  if (!canEditUser(row)) {
-    ElMessage.warning('管理员只能编辑自己的账号')
-    return
-  }
+  detailIsOtherAdmin.value = row.role === 'admin' && row.id !== authStore.currentUser?.id
   detailEditingId.value = row.id
   detailForm.username = row.username
   detailForm.email = row.email
