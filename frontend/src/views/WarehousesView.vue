@@ -3,7 +3,7 @@
     <section class="toolbar">
       <div>
         <h3>仓库管理</h3>
-        <p>维护仓库基础信息与封面图（地图解析功能后续接入）。</p>
+        <p>维护仓库基础信息与仓库图片（地图解析功能后续接入）。</p>
       </div>
       <div class="toolbar-actions">
         <el-input
@@ -17,7 +17,7 @@
           </template>
         </el-input>
         <el-button type="danger" plain :disabled="selectedIds.length === 0" @click="handleBatchDelete">
-          批量删除
+          批量禁用
         </el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
@@ -29,7 +29,7 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="warehouses" stripe @selection-change="onSelectionChange">
         <el-table-column type="selection" width="52" />
-        <el-table-column label="封面" width="88">
+        <el-table-column label="图片" width="88">
           <template #default="{ row }">
             <el-image
               v-if="row.cover_image"
@@ -59,7 +59,6 @@
           <template #default="{ row }">
             <el-button type="success" link @click="openImageDialog(row)">图片</el-button>
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -110,7 +109,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="imageDialogVisible" width="520px" :title="`仓库封面 - ${imageTargetName || ''}`">
+    <el-dialog v-model="imageDialogVisible" width="520px" :title="`仓库图片 - ${imageTargetName || ''}`">
       <div class="image-panel">
         <div class="image-preview-box">
           <el-image
@@ -121,7 +120,7 @@
             :preview-src-list="[imagePreviewUrl]"
             preview-teleported
           />
-          <div v-else class="image-empty">当前无封面图</div>
+          <div v-else class="image-empty">当前无图片</div>
         </div>
 
         <el-upload
@@ -348,21 +347,12 @@ async function beforeStatusChange(row) {
   }
 }
 
-async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除仓库「${row.name}」吗？`, '提示', {
-    type: 'warning',
-  })
-  await warehousesApi.deleteWarehouse(row.id)
-  ElMessage.success('删除成功')
-  fetchWarehouses()
-}
-
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个仓库吗？`, '提示', {
+  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个仓库吗？`, '提示', {
     type: 'warning',
   })
   await warehousesApi.batchDeleteWarehouses(selectedIds.value)
-  ElMessage.success('批量删除成功')
+  ElMessage.success('批量禁用成功')
   selectedIds.value = []
   fetchWarehouses()
 }

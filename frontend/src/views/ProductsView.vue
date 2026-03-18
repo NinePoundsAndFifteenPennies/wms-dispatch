@@ -3,7 +3,7 @@
     <section class="toolbar">
       <div>
         <h3>产品管理</h3>
-        <p>维护 SKU 主数据，支持图片上传、搜索与批量删除。</p>
+        <p>维护 SKU 主数据，支持图片上传、搜索与批量禁用。</p>
       </div>
       <div class="toolbar-actions">
         <el-input
@@ -17,7 +17,7 @@
           </template>
         </el-input>
         <el-button type="danger" plain :disabled="selectedIds.length === 0" @click="handleBatchDelete">
-          批量删除
+          批量禁用
         </el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
@@ -532,11 +532,11 @@ async function saveDetail() {
 }
 
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个产品吗？`, '提示', {
+  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个产品吗？`, '提示', {
     type: 'warning',
   })
   await productsApi.batchDeleteProducts(selectedIds.value)
-  ElMessage.success('批量删除成功')
+  ElMessage.success('批量禁用成功')
   selectedIds.value = []
   fetchProducts()
 }

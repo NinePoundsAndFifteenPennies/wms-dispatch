@@ -3,7 +3,7 @@
     <section class="toolbar">
       <div>
         <h3>客户管理</h3>
-        <p>维护客户基础信息，支持搜索与批量删除。</p>
+        <p>维护客户基础信息，支持搜索与批量禁用。</p>
       </div>
       <div class="toolbar-actions">
         <el-input
@@ -17,7 +17,7 @@
           </template>
         </el-input>
         <el-button type="danger" plain :disabled="selectedIds.length === 0" @click="handleBatchDelete">
-          批量删除
+          批量禁用
         </el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
@@ -286,11 +286,11 @@ async function onStatusChange(row, targetStatus) {
 }
 
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 位客户吗？`, '提示', {
+  await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 位客户吗？`, '提示', {
     type: 'warning',
   })
   await customersApi.batchDeleteCustomers(selectedIds.value)
-  ElMessage.success('批量删除成功')
+  ElMessage.success('批量禁用成功')
   selectedIds.value = []
   fetchCustomers()
 }
