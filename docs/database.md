@@ -165,13 +165,27 @@ resources/
 | after_locked | INTEGER | NOT NULL | 变更后锁定量 |
 | related_type | VARCHAR(32) | | 关联资源类型（order / transfer_order / inbound_record / stocktake） |
 | related_id | INTEGER | | 关联资源ID |
-| reason | TEXT | | 变更说明 |
 | operated_by | INTEGER | FK → users.id | 操作人 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | 创建时间 |
 
 ---
 
-### 7. orders（订单表）
+### 7. stocktakes（盘点事件表）
+用于记录每次人工盘点的离散事件，`inventory_movements` 通过 `related_type='stocktake'` + `related_id` 进行关联。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | SERIAL | PK | 盘点事件ID |
+| inventory_id | INTEGER | FK → inventory.id, NOT NULL | 对应库存记录 |
+| before_on_hand | INTEGER | NOT NULL | 盘点前现存量 |
+| after_on_hand | INTEGER | NOT NULL | 盘点后现存量 |
+| delta_on_hand | INTEGER | NOT NULL | 现存量变化 |
+| reason | TEXT | | 本次人工盘点调整原因 |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | 事件创建时间 |
+
+---
+
+### 8. orders（订单表）
 业务订单主表（不存阶段明细）
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -196,7 +210,7 @@ resources/
 
 ---
 
-### 8. order_items（订单明细表）
+### 9. order_items（订单明细表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -208,7 +222,7 @@ resources/
 
 ---
 
-### 9. order_stages（订单阶段表）
+### 10. order_stages（订单阶段表）
 用于承接“同阶段并行、跨阶段串行、手动标记阶段完成”规则
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -240,7 +254,7 @@ resources/
 
 ---
 
-### 10. work_orders（工作订单表）
+### 11. work_orders（工作订单表）
 分配给工人的执行任务
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -268,7 +282,7 @@ resources/
 
 ---
 
-### 11. work_order_notes（工单备注表）
+### 12. work_order_notes（工单备注表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -281,7 +295,7 @@ resources/
 
 ---
 
-### 12. transfer_orders（调拨单表）
+### 13. transfer_orders（调拨单表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -307,7 +321,7 @@ resources/
 
 ---
 
-### 13. inbound_records（待入库记录表）
+### 14. inbound_records（待入库记录表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -327,7 +341,7 @@ resources/
 
 ---
 
-### 14. notifications（通知表）
+### 15. notifications（通知表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -343,7 +357,7 @@ resources/
 
 ---
 
-### 15. reports（报表表）
+### 16. reports（报表表）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -405,7 +419,8 @@ orders (1) ──── (N) order_items
          ├──── (N) order_stages
          └──── (N) work_orders
 
-inventory (1) ──── (N) inventory_movements
+inventory (1) ──── (N) stocktakes
+          └──── (N) inventory_movements
 
 transfer_orders (1) ──── (1) inbound_records
 ```

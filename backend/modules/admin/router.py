@@ -13,11 +13,14 @@ from modules.admin.schemas import (
     ProductListResponse,
     ProductResponse,
     ProductUpdate,
+    StocktakeAdjustRequest,
+    WarehouseInboundRequest,
     UserCreate, 
     UserUpdate, 
     UserStatusUpdate, 
     UserResponse, 
     WarehouseCreate,
+    WarehouseInventoryResponse,
     WarehouseListResponse,
     WarehouseOptionResponse,
     WarehouseResponse,
@@ -26,6 +29,7 @@ from modules.admin.schemas import (
 )
 from modules.admin.services import AdminService
 from modules.admin.dependencies import get_admin_service
+from modules.auth.dependencies import get_current_user_required
 
 router = APIRouter()
 users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -144,6 +148,68 @@ async def remove_warehouse_image(
     service: AdminService = Depends(get_admin_service),
 ):
     return await service.remove_warehouse_image(warehouse_id)
+
+
+@warehouses_router.get("/{warehouse_id}/inventory", response_model=WarehouseInventoryResponse)
+async def get_warehouse_inventory(
+    warehouse_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_warehouse_inventory(
+        warehouse_id=warehouse_id,
+        page=page,
+        page_size=page_size,
+        search=search,
+    )
+
+
+@warehouses_router.patch("/{warehouse_id}/inventory/{inventory_id}/stocktake")
+async def adjust_inventory_stocktake(
+    warehouse_id: int,
+    inventory_id: int,
+    payload: StocktakeAdjustRequest,
+    service: AdminService = Depends(get_admin_service),
+    current_user=Depends(get_current_user_required),
+):
+    updated = await service.adjust_warehouse_inventory_stocktake(
+        warehouse_id=warehouse_id,
+        inventory_id=inventory_id,
+        payload=payload,
+        operated_by=current_user.get("id"),
+    )
+    inventory = updated["inventory"]
+    return {
+        "id": inventory.id,
+        "qty_on_hand": inventory.qty_on_hand,
+        "qty_threshold": inventory.qty_threshold,
+        "qty_available": inventory.qty_available,
+        "stocktake_id": updated["stocktake_id"],
+    }
+
+
+@warehouses_router.post("/{warehouse_id}/inventory/inbound")
+async def warehouse_inventory_inbound(
+    warehouse_id: int,
+    payload: WarehouseInboundRequest,
+    service: AdminService = Depends(get_admin_service),
+    current_user=Depends(get_current_user_required),
+):
+    updated = await service.warehouse_inventory_inbound(
+        warehouse_id=warehouse_id,
+        payload=payload,
+        operated_by=current_user.get("id"),
+    )
+    inventory = updated["inventory"]
+    return {
+        "id": inventory.id,
+        "qty_on_hand": inventory.qty_on_hand,
+        "qty_threshold": inventory.qty_threshold,
+        "qty_available": inventory.qty_available,
+        "movement_id": updated["movement_id"],
+    }
 
 
 @customers_router.get("", response_model=CustomerListResponse)

@@ -95,7 +95,7 @@ GET /api/admin/users
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | page | int | 1 | 当前页码，最小为1 |
-| page_size | int | 10 | 页面条数，1~100 之间 |
+| page_size | int | 10 | 每页条数，1~100 之间 |
 | search | string | - | 根据用户名或邮箱进行的模糊搜索词 |
 
 **成功响应:** `200 OK`
@@ -301,6 +301,102 @@ GET /api/admin/warehouses
 |------|------|------|
 | id | int | 仓库唯一编号 |
 | name | string | 仓库对外显示名称 |
+
+---
+
+### 仓库库存管理（新增）
+
+```http
+GET    /api/admin/warehouses/{warehouse_id}/inventory
+PATCH  /api/admin/warehouses/{warehouse_id}/inventory/{inventory_id}/stocktake
+POST   /api/admin/warehouses/{warehouse_id}/inventory/inbound
+```
+
+#### 1) 获取仓库库存详情
+
+```http
+GET /api/admin/warehouses/{warehouse_id}/inventory?page=1&page_size=10&search=关键词
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| page | int | 1 | 当前页码，最小为1 |
+| page_size | int | 10 | 每页条数，1~100 之间 |
+| search | string | - | 按商品名称 / SKU / 类别模糊搜索 |
+
+**成功响应:** `200 OK`
+```json
+{
+  "warehouse": {
+    "id": 1,
+    "name": "北京中心周转仓",
+    "address": "北京市朝阳区...",
+    "cover_image": "/resources/warehouses/w1.png",
+    "description": "华北区域主仓",
+    "is_active": true
+  },
+  "items": [
+    {
+      "id": 21,
+      "product_id": 8,
+      "sku": "SKU-10086",
+      "product_name": "标准纸箱",
+      "category": "包装物料",
+      "product_cover_image": "/resources/products/p8.png",
+      "product_is_active": true,
+      "qty_on_hand": 120,
+      "qty_reserved": 10,
+      "qty_locked": 5,
+      "qty_threshold": 30,
+      "qty_available": 105
+    }
+  ],
+  "total": 1
+}
+```
+
+#### 2) 盘点修正库存
+
+```http
+PATCH /api/admin/warehouses/{warehouse_id}/inventory/{inventory_id}/stocktake
+```
+
+**请求体 (JSON):**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| qty_on_hand | int | 否 | 修正后的现存量（>= 0） |
+| qty_threshold | int | 否 | 修正后的库存阈值（>= 0） |
+| reason | string | 否 | 修正原因，最长 500 字 |
+
+**说明：**
+- `qty_on_hand` 与 `qty_threshold` 至少传一个。
+- 当传入 `qty_on_hand` 时，后端会校验：`qty_on_hand >= qty_reserved + qty_locked`。
+- 上述校验等价于确保修正后 `qty_available = qty_on_hand - qty_reserved - qty_locked` 不为负。
+- `qty_available` 是数据库生成列（`GENERATED ALWAYS AS (qty_on_hand - qty_reserved - qty_locked) STORED`），会随现存量自动重算，接口不会也不能直接写入该字段。
+- 禁用仓库与下架商品不允许盘点修正。
+- 修正会写入 `stocktakes` 与 `inventory_movements`。
+
+#### 3) 进货入库
+
+```http
+POST /api/admin/warehouses/{warehouse_id}/inventory/inbound
+```
+
+**请求体 (JSON):**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| product_id | int | 是 | 进货商品 ID |
+| qty | int | 是 | 进货数量（> 0） |
+| reason | string | 否 | 可选说明，最长 500 字 |
+
+**说明：**
+- 若仓库中不存在该商品库存记录，系统会自动创建一条库存记录后再累加入库数量。
+- 入库会写入 `stocktakes` 与 `inventory_movements`，用于后续审计与追踪。
+- 禁用仓库与下架商品不允许进货。
 
 ---
 

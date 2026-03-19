@@ -114,7 +114,13 @@ const titleMap = {
   '/products': '产品管理',
 }
 
-const pageTitle = computed(() => titleMap[route.path] || 'WMS Dispatch')
+const pageTitle = computed(() => {
+  if (route.path.startsWith('/warehouses/') && route.path.endsWith('/inventory')) {
+    const warehouseName = typeof route.query.name === 'string' ? route.query.name.trim() : ''
+    return warehouseName || '仓库库存详情'
+  }
+  return titleMap[route.path] || 'WMS Dispatch'
+})
 const backendStatus = ref('checking')
 let statusTimer = null
 
