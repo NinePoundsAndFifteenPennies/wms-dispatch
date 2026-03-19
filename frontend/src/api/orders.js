@@ -16,4 +16,8 @@ export const ordersApi = {
   exportOrders(params) {
     return http.get('/admin/orders/export', { params })
   },
+
+  exportOrderDetail(orderId, params) {
+    return http.get(`/admin/orders/${orderId}/export`, { params })
+  },
 }

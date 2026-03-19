@@ -1,12 +1,17 @@
-from datetime import date, datetime
+import base64
 import csv
-from io import StringIO
+from datetime import date, datetime
+from io import BytesIO, StringIO
 from typing import List, Optional
 import bcrypt
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfgen import canvas
 
 from models.customer import Customer
 from models.inventory import Inventory
@@ -32,6 +37,8 @@ from modules.admin.schemas import (
 )
 from modules.shared.storage import save_image_file
 from modules.shared.storage import delete_resource_file_by_url
+
+PDF_TEXT_LINE_MAX_LENGTH = 120
 
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode("utf-8")
@@ -830,7 +837,6 @@ class AdminService:
                     o.completed_at,
                     o.cancelled_at,
                     o.created_at,
-                    o.updated_at,
                     COALESCE(SUM(oi.qty * oi.unit_price), 0)::INTEGER AS total_amount,
                     COALESCE(SUM(oi.qty), 0)::INTEGER AS total_items
                 FROM orders o
@@ -941,7 +947,6 @@ class AdminService:
                     o.cancelled_by,
                     o.cancellation_reason,
                     o.created_at,
-                    o.updated_at,
                     COALESCE(SUM(oi.qty * oi.unit_price), 0)::INTEGER AS total_amount,
                     COALESCE(SUM(oi.qty), 0)::INTEGER AS total_items
                 FROM orders o
@@ -1051,6 +1056,14 @@ class AdminService:
                 "content": "\n".join(lines),
             }
 
+        if export_format == "pdf":
+            content = self._build_orders_list_pdf(items)
+            return {
+                "filename": f"{title}.pdf",
+                "mime_type": "application/pdf",
+                "content_base64": base64.b64encode(content).decode("utf-8"),
+            }
+
         buffer = StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["order_no", "customer", "warehouse", "priority", "status", "dispatcher", "created_at", "total_items", "total_amount"])
@@ -1071,8 +1084,99 @@ class AdminService:
         return {
             "filename": f"{title}.csv",
             "mime_type": "text/csv; charset=utf-8",
-            "content": buffer.getvalue(),
+            "content": f"\ufeff{buffer.getvalue()}",
         }
+
+    async def export_order_detail(self, order_id: int, export_format: str = "pdf"):
+        if export_format != "pdf":
+            raise HTTPException(status_code=400, detail="Unsupported export format")
+        detail = await self.get_order_detail(order_id)
+        content = self._build_order_detail_pdf(detail)
+        return {
+            "filename": f"order_detail_{detail['order_no']}.pdf",
+            "mime_type": "application/pdf",
+            "content_base64": base64.b64encode(content).decode("utf-8"),
+        }
+
+    @staticmethod
+    def _register_cn_font():
+        try:
+            pdfmetrics.getFont("STSong-Light")
+        except KeyError:
+            pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+
+    def _build_orders_list_pdf(self, items: List[dict]) -> bytes:
+        self._register_cn_font()
+        buffer = BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        y = height - 40
+
+        pdf.setFont("STSong-Light", 15)
+        pdf.drawString(40, y, "订单列表导出")
+        y -= 26
+
+        pdf.setFont("STSong-Light", 10)
+        for idx, row in enumerate(items, start=1):
+            line = (
+                f"{idx}. {row['order_no']} | 客户:{row['customer_name']} | 仓库:{row['warehouse_name']} "
+                f"| 状态:{row['status']} | 优先级:{row['priority']} | 金额:{row['total_amount']}"
+            )
+            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
+            y -= 16
+            if y < 40:
+                pdf.showPage()
+                pdf.setFont("STSong-Light", 10)
+                y = height - 40
+
+        pdf.save()
+        return buffer.getvalue()
+
+    def _build_order_detail_pdf(self, detail: dict) -> bytes:
+        self._register_cn_font()
+        buffer = BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        y = height - 40
+
+        pdf.setFont("STSong-Light", 15)
+        pdf.drawString(40, y, f"订单详情导出 - {detail['order_no']}")
+        y -= 26
+
+        pdf.setFont("STSong-Light", 11)
+        head_lines = [
+            f"订单号: {detail['order_no']}",
+            f"客户: {detail['customer_name']} ({detail['customer_contact']})",
+            f"仓库: {detail['warehouse_name'] or '-'}",
+            f"调度员: {detail['dispatcher_name'] or '-'}",
+            f"状态: {detail['status']}    优先级: {detail['priority']}",
+            f"总金额(分): {detail['total_amount']}    总件数: {detail['total_items']}",
+            f"创建时间: {detail['created_at']}",
+        ]
+        for line in head_lines:
+            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
+            y -= 16
+
+        y -= 6
+        pdf.setFont("STSong-Light", 12)
+        pdf.drawString(40, y, "订单明细:")
+        y -= 18
+
+        pdf.setFont("STSong-Light", 10)
+        for idx, item in enumerate(detail["items"], start=1):
+            line = (
+                f"{idx}. {item['product_sku']} | {item['product_name']} | 类别:{item['product_category'] or '-'} "
+                f"| 数量:{item['qty']} | 单价:{item['unit_price']} | 小计:{item['subtotal']}"
+            )
+            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
+            y -= 16
+            if y < 40:
+                pdf.showPage()
+                pdf.setFont("STSong-Light", 10)
+                y = height - 40
+
+        pdf.save()
+        return buffer.getvalue()
 
     async def list_products(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
         stmt = select(Product)

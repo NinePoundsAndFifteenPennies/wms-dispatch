@@ -12,12 +12,13 @@
             导出
           </el-button>
           <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="csv">导出 CSV</el-dropdown-item>
-              <el-dropdown-item command="markdown">导出 Markdown</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="csv">导出 CSV</el-dropdown-item>
+                <el-dropdown-item command="markdown">导出 Markdown</el-dropdown-item>
+                <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
           新建订单
@@ -216,12 +217,16 @@
         <el-descriptions-item label="取消原因" :span="2">{{ detail.cancellation_reason || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="3">{{ detail.description || '-' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ formatDateTime(detail.updated_at) }}</el-descriptions-item>
         <el-descriptions-item label="总金额/总件数">{{ detail.total_amount }} / {{ detail.total_items }}</el-descriptions-item>
       </el-descriptions>
 
       <el-card shadow="never" style="margin-top: 12px" v-if="detail">
-        <template #header>订单明细</template>
+        <template #header>
+          <div class="detail-header">
+            <span>订单明细</span>
+            <el-button type="primary" link @click="handleDetailPdfExport">导出详情 PDF</el-button>
+          </div>
+        </template>
         <el-table :data="detail.items" stripe>
           <el-table-column prop="product_sku" label="SKU" width="130" />
           <el-table-column prop="product_name" label="产品名称" min-width="200" />
@@ -457,6 +462,28 @@ function downloadTextFile(filename, content, mimeType) {
   window.URL.revokeObjectURL(url)
 }
 
+function downloadBase64File(filename, base64Content, mimeType) {
+  const byteCharacters = atob(base64Content)
+  const byteArrays = []
+  for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+    const slice = byteCharacters.slice(offset, offset + 1024)
+    const byteNumbers = new Array(slice.length)
+    for (let byteIndex = 0; byteIndex < slice.length; byteIndex += 1) {
+      byteNumbers[byteIndex] = slice.charCodeAt(byteIndex)
+    }
+    byteArrays.push(new Uint8Array(byteNumbers))
+  }
+  const blob = new Blob(byteArrays, { type: mimeType || 'application/octet-stream' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
 async function handleExport(format) {
   const res = await ordersApi.exportOrders({
     export_format: format,
@@ -465,8 +492,19 @@ async function handleExport(format) {
     start_date: startDate.value || undefined,
     end_date: endDate.value || undefined,
   })
-  downloadTextFile(res.data.filename, res.data.content, res.data.mime_type)
+  if (format === 'pdf') {
+    downloadBase64File(res.data.filename, res.data.content_base64, res.data.mime_type)
+  } else {
+    downloadTextFile(res.data.filename, res.data.content, res.data.mime_type)
+  }
   ElMessage.success('导出成功')
+}
+
+async function handleDetailPdfExport() {
+  if (!detail.value?.id) return
+  const res = await ordersApi.exportOrderDetail(detail.value.id, { export_format: 'pdf' })
+  downloadBase64File(res.data.filename, res.data.content_base64, res.data.mime_type)
+  ElMessage.success('详情 PDF 导出成功')
 }
 
 onMounted(() => {
@@ -575,6 +613,12 @@ p {
 
 .option-disabled {
   color: #a0a0a0;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 @media (max-width: 860px) {

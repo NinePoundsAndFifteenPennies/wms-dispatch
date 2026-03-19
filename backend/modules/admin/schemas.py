@@ -233,7 +233,6 @@ class OrderListItemResponse(BaseModel):
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: datetime
     total_amount: int
     total_items: int
 
@@ -271,7 +270,6 @@ class OrderCreateResponse(BaseModel):
     cancelled_by: Optional[int] = None
     cancellation_reason: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -308,7 +306,6 @@ class OrderDetailResponse(BaseModel):
     cancelled_by: Optional[int] = None
     cancellation_reason: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
     total_amount: int
     total_items: int
     items: List[OrderDetailItemResponse]

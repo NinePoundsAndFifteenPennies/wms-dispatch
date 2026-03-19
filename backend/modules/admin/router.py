@@ -353,7 +353,7 @@ async def list_orders(
 
 @orders_router.get("/export")
 async def export_orders(
-    export_format: str = Query(default="csv", pattern="^(csv|markdown)$"),
+    export_format: str = Query(default="csv", pattern="^(csv|markdown|pdf)$"),
     search: Optional[str] = None,
     status: Optional[str] = Query(default=None, pattern="^(pending_acceptance|in_progress|completed|cancelled)$"),
     start_date: Optional[date] = None,
@@ -367,6 +367,15 @@ async def export_orders(
         start_date=start_date,
         end_date=end_date,
     )
+
+
+@orders_router.get("/{order_id}/export")
+async def export_order_detail(
+    order_id: int,
+    export_format: str = Query(default="pdf", pattern="^(pdf)$"),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.export_order_detail(order_id, export_format=export_format)
 
 
 @orders_router.get("/{order_id}", response_model=OrderDetailResponse)
