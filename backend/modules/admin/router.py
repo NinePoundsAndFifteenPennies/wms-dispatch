@@ -1,4 +1,5 @@
-﻿from typing import List, Optional
+from datetime import date
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
@@ -6,6 +7,10 @@ from modules.admin.schemas import (
     ActiveStatusUpdate,
     BatchDeleteRequest,
     CustomerCreate,
+    OrderCreate,
+    OrderCreateResponse,
+    OrderDetailResponse,
+    OrderListResponse,
     CustomerListResponse,
     CustomerResponse,
     CustomerUpdate,
@@ -36,6 +41,7 @@ users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
 warehouses_router = APIRouter(prefix="/admin/warehouses", tags=["Admin Warehouses"])
 customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"])
 products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"])
+orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"])
 
 @users_router.get("", response_model=UserListResponse)
 async def list_users(
@@ -222,6 +228,14 @@ async def list_customers(
     return await service.list_customers(page=page, page_size=page_size, search=search)
 
 
+@customers_router.get("/options", response_model=List[CustomerResponse])
+async def list_customer_options(
+    search: Optional[str] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_customers_options(search=search)
+
+
 @customers_router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(customer_data: CustomerCreate, service: AdminService = Depends(get_admin_service)):
     return await service.create_customer(customer_data)
@@ -316,7 +330,56 @@ async def remove_product_image(
 ):
     return await service.remove_product_image(product_id)
 
+
+@orders_router.get("", response_model=OrderListResponse)
+async def list_orders(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    status: Optional[str] = Query(default=None, regex="^(pending_acceptance|in_progress|completed|cancelled)$"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_orders(
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@orders_router.get("/export")
+async def export_orders(
+    export_format: str = Query(default="csv", regex="^(csv|markdown)$"),
+    search: Optional[str] = None,
+    status: Optional[str] = Query(default=None, regex="^(pending_acceptance|in_progress|completed|cancelled)$"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.export_orders(
+        export_format=export_format,
+        search=search,
+        status=status,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@orders_router.get("/{order_id}", response_model=OrderDetailResponse)
+async def get_order_detail(order_id: int, service: AdminService = Depends(get_admin_service)):
+    return await service.get_order_detail(order_id)
+
+
+@orders_router.post("", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_order(payload: OrderCreate, service: AdminService = Depends(get_admin_service)):
+    return await service.create_order(payload)
+
 router.include_router(users_router)
 router.include_router(warehouses_router)
 router.include_router(customers_router)
 router.include_router(products_router)
+router.include_router(orders_router)

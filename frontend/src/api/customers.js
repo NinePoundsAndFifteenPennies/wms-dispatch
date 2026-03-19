@@ -5,6 +5,10 @@ export const customersApi = {
     return http.get('/admin/customers', { params })
   },
 
+  getCustomerOptions(params) {
+    return http.get('/admin/customers/options', { params })
+  },
+
   createCustomer(data) {
     return http.post('/admin/customers', data)
   },

@@ -1,16 +1,23 @@
-﻿from typing import List, Optional
+from datetime import date, datetime
+import csv
+from io import StringIO
+from typing import List, Optional
 import bcrypt
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer import Customer
 from models.inventory import Inventory
+from models.order import Order
+from models.order_item import OrderItem
 from models.product import Product
 from models.user import User
 from models.warehouse import Warehouse
 from modules.admin.schemas import (
     CustomerCreate,
+    OrderCreate,
     CustomerUpdate,
     ProductCreate,
     ProductUpdate,
@@ -665,6 +672,18 @@ class AdminService:
         items = result.scalars().all()
         return {"items": items, "total": total}
 
+    async def list_customers_options(self, search: Optional[str] = None):
+        stmt = select(Customer).order_by(Customer.id.desc())
+        if search:
+            stmt = stmt.where(
+                or_(
+                    Customer.name.ilike(f"%{search}%"),
+                    Customer.contact.ilike(f"%{search}%"),
+                )
+            )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def create_customer(self, customer_data: CustomerCreate) -> Customer:
         customer = Customer(
             name=customer_data.name,
@@ -734,6 +753,326 @@ class AdminService:
             customer.is_active = False
         await self.session.commit()
         return len(customers)
+
+    def _build_order_filters(
+        self,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ):
+        clauses = ["1=1"]
+        params = {}
+        if search:
+            clauses.append("(o.order_no ILIKE :search OR c.name ILIKE :search)")
+            params["search"] = f"%{search}%"
+        if status:
+            clauses.append("o.status = :status")
+            params["status"] = status
+        if start_date:
+            clauses.append("DATE(o.created_at) >= :start_date")
+            params["start_date"] = start_date
+        if end_date:
+            clauses.append("DATE(o.created_at) <= :end_date")
+            params["end_date"] = end_date
+        return " AND ".join(clauses), params
+
+    async def list_orders(
+        self,
+        page: int = 1,
+        page_size: int = 10,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ):
+        where_sql, params = self._build_order_filters(
+            search=search,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        count_result = await self.session.execute(
+            text(
+                f"""
+                SELECT COUNT(*)
+                FROM orders o
+                JOIN customers c ON c.id = o.customer_id
+                WHERE {where_sql}
+                """
+            ),
+            params,
+        )
+        total = count_result.scalar_one() or 0
+
+        query_params = {
+            **params,
+            "offset": (page - 1) * page_size,
+            "limit": page_size,
+        }
+        rows = await self.session.execute(
+            text(
+                f"""
+                SELECT
+                    o.id,
+                    o.order_no,
+                    o.customer_id,
+                    c.name AS customer_name,
+                    o.warehouse_id,
+                    w.name AS warehouse_name,
+                    o.dispatcher_id,
+                    u.username AS dispatcher_name,
+                    o.description,
+                    o.status,
+                    o.priority,
+                    o.accepted_at,
+                    o.completed_at,
+                    o.cancelled_at,
+                    o.created_at,
+                    o.updated_at,
+                    COALESCE(SUM(oi.qty * oi.unit_price), 0)::INTEGER AS total_amount,
+                    COALESCE(SUM(oi.qty), 0)::INTEGER AS total_items
+                FROM orders o
+                JOIN customers c ON c.id = o.customer_id
+                LEFT JOIN warehouses w ON w.id = o.warehouse_id
+                LEFT JOIN users u ON u.id = o.dispatcher_id
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                WHERE {where_sql}
+                GROUP BY o.id, c.name, w.name, u.username
+                ORDER BY o.id DESC
+                OFFSET :offset
+                LIMIT :limit
+                """
+            ),
+            query_params,
+        )
+        items = [dict(row) for row in rows.mappings().all()]
+        return {"items": items, "total": total}
+
+    async def _next_order_no(self) -> str:
+        prefix = f"OD-{datetime.now().strftime('%y%m%d')}"
+        seq_result = await self.session.execute(
+            text(
+                """
+                SELECT COALESCE(MAX(CAST(split_part(order_no, '-', 3) AS INTEGER)), 0)
+                FROM orders
+                WHERE order_no LIKE :prefix
+                """
+            ),
+            {"prefix": f"{prefix}-%"},
+        )
+        seq = (seq_result.scalar_one() or 0) + 1
+        return f"{prefix}-{seq:03d}"
+
+    async def create_order(self, payload: OrderCreate) -> Order:
+        customer_result = await self.session.execute(select(Customer).where(Customer.id == payload.customer_id))
+        customer = customer_result.scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        if not customer.is_active:
+            raise HTTPException(status_code=400, detail="Inactive customer cannot be selected")
+
+        product_ids = [item.product_id for item in payload.items]
+        if len(set(product_ids)) != len(product_ids):
+            raise HTTPException(status_code=400, detail="Duplicate product in order items is not allowed")
+
+        products_result = await self.session.execute(
+            select(Product).where(Product.id.in_(product_ids), Product.is_active.is_(True))
+        )
+        valid_products = products_result.scalars().all()
+        if len(valid_products) != len(product_ids):
+            raise HTTPException(status_code=400, detail="Order items contain unavailable products")
+
+        for _ in range(3):
+            order_no = await self._next_order_no()
+            order = Order(
+                order_no=order_no,
+                customer_id=payload.customer_id,
+                description=payload.description,
+                priority=payload.priority,
+                status="pending_acceptance",
+            )
+            self.session.add(order)
+            try:
+                await self.session.flush()
+                for item in payload.items:
+                    self.session.add(
+                        OrderItem(
+                            order_id=order.id,
+                            product_id=item.product_id,
+                            qty=item.qty,
+                            unit_price=item.unit_price,
+                        )
+                    )
+                await self.session.commit()
+                await self.session.refresh(order)
+                return order
+            except IntegrityError:
+                await self.session.rollback()
+                continue
+            except Exception as e:
+                await self.session.rollback()
+                raise HTTPException(status_code=400, detail=str(e))
+
+        raise HTTPException(status_code=409, detail="Failed to generate unique order number")
+
+    async def get_order_detail(self, order_id: int):
+        order_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    o.id,
+                    o.order_no,
+                    o.customer_id,
+                    c.name AS customer_name,
+                    c.contact AS customer_contact,
+                    c.address AS customer_address,
+                    o.warehouse_id,
+                    w.name AS warehouse_name,
+                    o.dispatcher_id,
+                    u.username AS dispatcher_name,
+                    o.description,
+                    o.status,
+                    o.priority,
+                    o.accepted_at,
+                    o.completed_at,
+                    o.cancelled_at,
+                    o.cancelled_by,
+                    o.cancellation_reason,
+                    o.created_at,
+                    o.updated_at,
+                    COALESCE(SUM(oi.qty * oi.unit_price), 0)::INTEGER AS total_amount,
+                    COALESCE(SUM(oi.qty), 0)::INTEGER AS total_items
+                FROM orders o
+                JOIN customers c ON c.id = o.customer_id
+                LEFT JOIN warehouses w ON w.id = o.warehouse_id
+                LEFT JOIN users u ON u.id = o.dispatcher_id
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                WHERE o.id = :order_id
+                GROUP BY o.id, c.name, c.contact, c.address, w.name, u.username
+                """
+            ),
+            {"order_id": order_id},
+        )
+        order = order_result.mappings().first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        items_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    oi.id,
+                    oi.product_id,
+                    p.sku AS product_sku,
+                    p.name AS product_name,
+                    p.category AS product_category,
+                    oi.qty,
+                    oi.unit_price,
+                    (oi.qty * oi.unit_price)::INTEGER AS subtotal
+                FROM order_items oi
+                JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = :order_id
+                ORDER BY oi.id ASC
+                """
+            ),
+            {"order_id": order_id},
+        )
+
+        return {**dict(order), "items": [dict(row) for row in items_result.mappings().all()]}
+
+    async def export_orders(
+        self,
+        export_format: str = "csv",
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ):
+        where_sql, params = self._build_order_filters(
+            search=search,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = await self.session.execute(
+            text(
+                f"""
+                SELECT
+                    o.order_no,
+                    c.name AS customer_name,
+                    COALESCE(w.name, '-') AS warehouse_name,
+                    o.priority,
+                    o.status,
+                    COALESCE(u.username, '-') AS dispatcher_name,
+                    o.created_at,
+                    COALESCE(SUM(oi.qty * oi.unit_price), 0)::INTEGER AS total_amount,
+                    COALESCE(SUM(oi.qty), 0)::INTEGER AS total_items
+                FROM orders o
+                JOIN customers c ON c.id = o.customer_id
+                LEFT JOIN warehouses w ON w.id = o.warehouse_id
+                LEFT JOIN users u ON u.id = o.dispatcher_id
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                WHERE {where_sql}
+                GROUP BY o.id, c.name, w.name, u.username
+                ORDER BY o.id DESC
+                """
+            ),
+            params,
+        )
+        items = [dict(row) for row in rows.mappings().all()]
+
+        title_parts = ["orders"]
+        if search:
+            title_parts.append(f"search-{search}")
+        if status:
+            title_parts.append(f"status-{status}")
+        if start_date:
+            title_parts.append(f"from-{start_date}")
+        if end_date:
+            title_parts.append(f"to-{end_date}")
+        title = "_".join(title_parts)
+
+        if export_format == "markdown":
+            lines = [
+                f"# Orders Export ({len(items)})",
+                "",
+                "| 订单号 | 客户 | 仓库 | 优先级 | 状态 | 责任调度员 | 创建时间 | 总件数 | 总金额(分) |",
+                "|---|---|---|---|---|---|---|---:|---:|",
+            ]
+            for row in items:
+                lines.append(
+                    f"| {row['order_no']} | {row['customer_name']} | {row['warehouse_name']} | {row['priority']} | {row['status']} | {row['dispatcher_name']} | {row['created_at']} | {row['total_items']} | {row['total_amount']} |"
+                )
+            return {
+                "filename": f"{title}.md",
+                "mime_type": "text/markdown; charset=utf-8",
+                "content": "\n".join(lines),
+            }
+
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["order_no", "customer", "warehouse", "priority", "status", "dispatcher", "created_at", "total_items", "total_amount"])
+        for row in items:
+            writer.writerow(
+                [
+                    row["order_no"],
+                    row["customer_name"],
+                    row["warehouse_name"],
+                    row["priority"],
+                    row["status"],
+                    row["dispatcher_name"],
+                    row["created_at"],
+                    row["total_items"],
+                    row["total_amount"],
+                ]
+            )
+        return {
+            "filename": f"{title}.csv",
+            "mime_type": "text/csv; charset=utf-8",
+            "content": buffer.getvalue(),
+        }
 
     async def list_products(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
         stmt = select(Product)

@@ -1,5 +1,6 @@
-﻿from decimal import Decimal
-from typing import Optional, List
+from decimal import Decimal
+from datetime import datetime
+from typing import Optional, List, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -210,3 +211,104 @@ class BatchDeleteRequest(BaseModel):
 
 class ActiveStatusUpdate(BaseModel):
     is_active: bool
+
+
+OrderStatus = Literal["pending_acceptance", "in_progress", "completed", "cancelled"]
+OrderPriority = Literal["high", "medium", "low"]
+
+
+class OrderListItemResponse(BaseModel):
+    id: int
+    order_no: str
+    customer_id: int
+    customer_name: str
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
+    dispatcher_id: Optional[int] = None
+    dispatcher_name: Optional[str] = None
+    description: Optional[str] = None
+    status: OrderStatus
+    priority: OrderPriority
+    accepted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    total_amount: int
+    total_items: int
+
+
+class OrderListResponse(BaseModel):
+    items: List[OrderListItemResponse]
+    total: int
+
+
+class OrderItemCreate(BaseModel):
+    product_id: int
+    qty: int = Field(gt=0)
+    unit_price: int = Field(ge=0, description="单价（分）")
+
+
+class OrderCreate(BaseModel):
+    customer_id: int
+    priority: OrderPriority = "medium"
+    description: Optional[str] = None
+    items: List[OrderItemCreate] = Field(min_length=1)
+
+
+class OrderCreateResponse(BaseModel):
+    id: int
+    order_no: str
+    customer_id: int
+    warehouse_id: Optional[int] = None
+    dispatcher_id: Optional[int] = None
+    description: Optional[str] = None
+    status: OrderStatus
+    priority: OrderPriority
+    accepted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_by: Optional[int] = None
+    cancellation_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OrderDetailItemResponse(BaseModel):
+    id: int
+    product_id: int
+    product_sku: str
+    product_name: str
+    product_category: Optional[str] = None
+    qty: int
+    unit_price: int
+    subtotal: int
+
+
+class OrderDetailResponse(BaseModel):
+    id: int
+    order_no: str
+    customer_id: int
+    customer_name: str
+    customer_contact: str
+    customer_address: Optional[str] = None
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
+    dispatcher_id: Optional[int] = None
+    dispatcher_name: Optional[str] = None
+    description: Optional[str] = None
+    status: OrderStatus
+    priority: OrderPriority
+    accepted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_by: Optional[int] = None
+    cancellation_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    total_amount: int
+    total_items: int
+    items: List[OrderDetailItemResponse]
