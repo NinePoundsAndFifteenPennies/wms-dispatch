@@ -3,73 +3,513 @@
     <section class="toolbar">
       <div>
         <h3>订单中枢</h3>
-        <p>聚合查看接单状态、优先级和责任调度员。</p>
+        <p>管理员订单列表、创建、详情与导出。</p>
       </div>
       <div class="actions">
-        <el-button>
-          <el-icon><Download /></el-icon>
-          导出
-        </el-button>
-        <el-button type="primary">
+        <el-dropdown @command="handleExport">
+          <el-button>
+            <el-icon><Download /></el-icon>
+            导出
+          </el-button>
+          <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="csv">导出 CSV</el-dropdown-item>
+                <el-dropdown-item command="markdown">导出 Markdown</el-dropdown-item>
+                <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
           新建订单
         </el-button>
       </div>
     </section>
 
-    <section class="stats">
-      <div class="stat-item">
-        <span><el-icon><Tickets /></el-icon>待接单</span>
-        <b>18</b>
-      </div>
-      <div class="stat-item">
-        <span><el-icon><ShoppingCartFull /></el-icon>进行中</span>
-        <b>27</b>
-      </div>
-      <div class="stat-item">
-        <span><el-icon><Timer /></el-icon>接单超时风险</span>
-        <b>4</b>
-      </div>
-    </section>
+    <el-card shadow="never" class="table-card" v-loading="loading">
+      <section class="filters">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索订单号/客户"
+          clearable
+          @keyup.enter="handleSearch"
+          style="max-width: 260px"
+        />
+        <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width: 180px">
+          <el-option label="待接单" value="pending_acceptance" />
+          <el-option label="进行中" value="in_progress" />
+          <el-option label="已完成" value="completed" />
+          <el-option label="已取消" value="cancelled" />
+        </el-select>
 
-    <el-card class="table-card" shadow="never">
-      <el-table :data="mockRows" stripe>
-        <el-table-column prop="orderNo" label="订单号" width="180" />
-        <el-table-column prop="warehouse" label="仓库" width="140" />
-        <el-table-column prop="priority" label="优先级" width="110" />
-        <el-table-column prop="status" label="状态" width="120" />
-        <el-table-column prop="dispatcher" label="责任调度员" />
+        <!-- 日期范围：拆成两个独立 DatePicker，互不联动，可单独设置 -->
+        <div class="date-range-wrap">
+          <el-date-picker
+            v-model="startDate"
+            type="date"
+            placeholder="开始日期"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disableStartDate"
+            clearable
+            style="width: 160px"
+            @change="handleSearch"
+          />
+          <span class="date-sep">至</span>
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disableEndDate"
+            clearable
+            style="width: 160px"
+            @change="handleSearch"
+          />
+          <el-button
+            v-if="startDate || endDate"
+            link
+            type="info"
+            @click="clearDateRange"
+            style="margin-left: 2px"
+          >清除</el-button>
+        </div>
+
+        <el-button type="primary" @click="handleSearch">查询</el-button>
+      </section>
+
+      <el-table :data="orders" stripe>
+        <el-table-column prop="order_no" label="订单号" min-width="150" />
+        <el-table-column prop="customer_name" label="客户" min-width="140" />
+        <el-table-column label="仓库" min-width="140">
+          <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="优先级" width="100">
+          <template #default="{ row }">{{ priorityText(row.priority) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="120">
+          <template #default="{ row }">{{ statusText(row.status) }}</template>
+        </el-table-column>
+        <el-table-column label="责任调度员" min-width="120">
+          <template #default="{ row }">{{ row.dispatcher_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="total_items" label="总件数" width="100" />
+        <el-table-column prop="total_amount" label="总金额(分)" width="120" />
+        <el-table-column label="创建时间" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="96" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
+
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </el-card>
+
+    <el-dialog v-model="createDialogVisible" title="新建订单" width="860px">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="100px">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="客户" prop="customer_id">
+              <el-select
+                v-model="createForm.customer_id"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="fetchCustomerOptions"
+                :loading="customerLoading"
+                placeholder="搜索客户名称/联系方式"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="customer in customerOptions"
+                  :key="customer.id"
+                  :label="`${customer.name}（${customer.contact}）`"
+                  :value="customer.id"
+                  :disabled="!customer.is_active"
+                  :class="{ 'option-disabled': !customer.is_active }"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="优先级" prop="priority">
+              <el-select v-model="createForm.priority" style="width: 100%">
+                <el-option label="高" value="high" />
+                <el-option label="中" value="medium" />
+                <el-option label="低" value="low" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="备注">
+          <el-input v-model="createForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+
+        <el-form-item label="订单明细" prop="items">
+          <div class="item-editor">
+            <div class="item-header">
+              <span class="col-product">产品</span>
+              <span class="col-qty">数量</span>
+              <span class="col-price">单价(分)</span>
+            </div>
+            <div v-for="(item, index) in createForm.items" :key="index" class="item-row">
+              <el-select
+                v-model="item.product_id"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="fetchProductOptions"
+                :loading="productLoading"
+                placeholder="搜索产品（名称/SKU/类别）"
+                class="col-product"
+              >
+                <el-option
+                  v-for="product in getProductOptionsForRow(index)"
+                  :key="product.id"
+                  :label="`${product.name}（${product.sku}）`"
+                  :value="product.id"
+                />
+              </el-select>
+              <el-input-number v-model="item.qty" :min="1" :precision="0" controls-position="right" class="col-qty" />
+              <el-input-number v-model="item.unit_price" :min="0" :precision="0" controls-position="right" class="col-price" />
+              <el-button type="danger" plain @click="removeItem(index)" :disabled="createForm.items.length <= 1">
+                删除
+              </el-button>
+            </div>
+            <el-button type="primary" plain @click="addItem">新增明细</el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="detailVisible" title="订单详情" width="980px">
+      <el-descriptions v-if="detail" :column="3" border>
+        <el-descriptions-item label="订单ID">{{ detail.id }}</el-descriptions-item>
+        <el-descriptions-item label="订单号">{{ detail.order_no }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ statusText(detail.status) }}</el-descriptions-item>
+        <el-descriptions-item label="客户">{{ detail.customer_name }}</el-descriptions-item>
+        <el-descriptions-item label="客户联系方式">{{ detail.customer_contact }}</el-descriptions-item>
+        <el-descriptions-item label="客户地址">{{ detail.customer_address || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="仓库">{{ detail.warehouse_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="责任调度员">{{ detail.dispatcher_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="优先级">{{ priorityText(detail.priority) }}</el-descriptions-item>
+        <el-descriptions-item label="接单时间">{{ formatDateTime(detail.accepted_at) }}</el-descriptions-item>
+        <el-descriptions-item label="完成时间">{{ formatDateTime(detail.completed_at) }}</el-descriptions-item>
+        <el-descriptions-item label="取消时间">{{ formatDateTime(detail.cancelled_at) }}</el-descriptions-item>
+        <el-descriptions-item label="取消人">{{ detail.cancelled_by || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="取消原因" :span="2">{{ detail.cancellation_reason || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注" :span="3">{{ detail.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ formatDateTime(detail.created_at) }}</el-descriptions-item>
+        <el-descriptions-item label="总金额/总件数">{{ detail.total_amount }} / {{ detail.total_items }}</el-descriptions-item>
+      </el-descriptions>
+
+      <el-card shadow="never" style="margin-top: 12px" v-if="detail">
+        <template #header>
+          <div class="detail-header">
+            <span>订单明细</span>
+            <el-button type="primary" link @click="handleDetailPdfExport">导出详情 PDF</el-button>
+          </div>
+        </template>
+        <el-table :data="detail.items" stripe>
+          <el-table-column prop="product_sku" label="SKU" width="130" />
+          <el-table-column prop="product_name" label="产品名称" min-width="200" />
+          <el-table-column prop="product_category" label="类别" min-width="120" />
+          <el-table-column prop="qty" label="数量" width="90" />
+          <el-table-column prop="unit_price" label="单价(分)" width="110" />
+          <el-table-column prop="subtotal" label="小计(分)" width="110" />
+        </el-table>
+      </el-card>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { Download, Plus, ShoppingCartFull, Tickets, Timer } from '@element-plus/icons-vue'
+import { reactive, ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Download, Plus } from '@element-plus/icons-vue'
+import { customersApi } from '../api/customers'
+import { ordersApi } from '../api/orders'
+import { productsApi } from '../api/products'
 
-const mockRows = [
-  {
-    orderNo: 'OD-240319-08',
-    warehouse: '华南中心仓',
-    priority: '高',
-    status: '待接单',
-    dispatcher: '-',
-  },
-  {
-    orderNo: 'OD-240319-06',
-    warehouse: '华东一仓',
-    priority: '中',
-    status: '进行中',
-    dispatcher: '周伟',
-  },
-  {
-    orderNo: 'OD-240319-02',
-    warehouse: '华北中转仓',
-    priority: '低',
-    status: '进行中',
-    dispatcher: '王琳',
-  },
-]
+const orders = ref([])
+const total = ref(0)
+const loading = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const searchQuery = ref('')
+const statusFilter = ref('')
+
+// 拆分为两个独立日期，替代原来的 dateRange 数组
+const startDate = ref('')
+const endDate = ref('')
+
+const detailVisible = ref(false)
+const detail = ref(null)
+
+const createDialogVisible = ref(false)
+const createFormRef = ref()
+const creating = ref(false)
+const customerLoading = ref(false)
+const productLoading = ref(false)
+const customerOptions = ref([])
+const productOptions = ref([])
+
+const createForm = reactive({
+  customer_id: null,
+  priority: 'medium',
+  description: '',
+  items: [{ product_id: null, qty: 1, unit_price: 0 }],
+})
+
+const createRules = {
+  customer_id: [{ required: true, message: '请选择客户', trigger: 'change' }],
+  items: [{ required: true, message: '请至少填写一条订单明细', trigger: 'change' }],
+}
+
+// ── 日期约束：开始日期不能晚于已选的结束日期 ──────────────────────────
+function disableStartDate(time) {
+  if (!endDate.value) return false
+  return time.getTime() > new Date(endDate.value).getTime()
+}
+
+// 结束日期不能早于已选的开始日期
+function disableEndDate(time) {
+  if (!startDate.value) return false
+  return time.getTime() < new Date(startDate.value).getTime()
+}
+
+function clearDateRange() {
+  startDate.value = ''
+  endDate.value = ''
+  handleSearch()
+}
+
+// ── 工具函数 ───────────────────────────────────────────────────────────
+function statusText(status) {
+  return (
+    {
+      pending_acceptance: '待接单',
+      in_progress: '进行中',
+      completed: '已完成',
+      cancelled: '已取消',
+    }[status] || status
+  )
+}
+
+function priorityText(priority) {
+  return { high: '高', medium: '中', low: '低' }[priority] || priority
+}
+
+function formatDateTime(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+}
+
+function buildQueryParams() {
+  return {
+    page: currentPage.value,
+    page_size: pageSize.value,
+    search: searchQuery.value || undefined,
+    status: statusFilter.value || undefined,
+    start_date: startDate.value || undefined,
+    end_date: endDate.value || undefined,
+  }
+}
+
+// ── 数据加载 ───────────────────────────────────────────────────────────
+async function fetchOrders() {
+  loading.value = true
+  try {
+    const res = await ordersApi.getOrders(buildQueryParams())
+    orders.value = res.data.items || []
+    total.value = res.data.total || 0
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleSearch() {
+  currentPage.value = 1
+  fetchOrders()
+}
+
+function handleSizeChange(size) {
+  pageSize.value = size
+  fetchOrders()
+}
+
+function handleCurrentChange(page) {
+  currentPage.value = page
+  fetchOrders()
+}
+
+async function openDetail(orderId) {
+  const res = await ordersApi.getOrderDetail(orderId)
+  detail.value = res.data
+  detailVisible.value = true
+}
+
+// ── 新建订单 ───────────────────────────────────────────────────────────
+function resetCreateForm() {
+  createForm.customer_id = null
+  createForm.priority = 'medium'
+  createForm.description = ''
+  createForm.items = [{ product_id: null, qty: 1, unit_price: 0 }]
+}
+
+async function fetchCustomerOptions(keyword = '') {
+  customerLoading.value = true
+  try {
+    const res = await customersApi.getCustomerOptions({ search: keyword || undefined })
+    customerOptions.value = res.data || []
+  } finally {
+    customerLoading.value = false
+  }
+}
+
+async function fetchProductOptions(keyword = '') {
+  productLoading.value = true
+  try {
+    const res = await productsApi.getProducts({
+      page: 1,
+      page_size: 100,
+      search: keyword || undefined,
+    })
+    productOptions.value = (res.data.items || []).filter((item) => item.is_active)
+  } finally {
+    productLoading.value = false
+  }
+}
+
+function getProductOptionsForRow(index) {
+  const selectedElsewhere = createForm.items
+    .map((item, i) => (i !== index ? item.product_id : null))
+    .filter(Boolean)
+  return productOptions.value.filter((p) => !selectedElsewhere.includes(p.id))
+}
+
+function openCreateDialog() {
+  resetCreateForm()
+  createDialogVisible.value = true
+  fetchCustomerOptions('')
+  fetchProductOptions('')
+}
+
+function addItem() {
+  createForm.items.push({ product_id: null, qty: 1, unit_price: 0 })
+}
+
+function removeItem(index) {
+  if (createForm.items.length <= 1) return
+  createForm.items.splice(index, 1)
+}
+
+async function submitCreate() {
+  const valid = await createFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  if (createForm.items.some((item) => !item.product_id || item.qty <= 0 || item.unit_price < 0)) {
+    ElMessage.error('请完整填写订单明细')
+    return
+  }
+
+  creating.value = true
+  try {
+    await ordersApi.createOrder({
+      customer_id: createForm.customer_id,
+      priority: createForm.priority,
+      description: createForm.description || null,
+      items: createForm.items.map((item) => ({
+        product_id: item.product_id,
+        qty: item.qty,
+        unit_price: item.unit_price,
+      })),
+    })
+    ElMessage.success('订单创建成功')
+    createDialogVisible.value = false
+    fetchOrders()
+  } finally {
+    creating.value = false
+  }
+}
+
+// ── 导出 ───────────────────────────────────────────────────────────────
+function downloadTextFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+function downloadBase64File(filename, base64Content, mimeType) {
+  const byteCharacters = atob(base64Content)
+  const byteArrays = []
+  for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+    const slice = byteCharacters.slice(offset, offset + 1024)
+    const byteNumbers = new Array(slice.length)
+    for (let byteIndex = 0; byteIndex < slice.length; byteIndex += 1) {
+      byteNumbers[byteIndex] = slice.charCodeAt(byteIndex)
+    }
+    byteArrays.push(new Uint8Array(byteNumbers))
+  }
+  const blob = new Blob(byteArrays, { type: mimeType || 'application/octet-stream' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+async function handleExport(format) {
+  const res = await ordersApi.exportOrders({
+    export_format: format,
+    search: searchQuery.value || undefined,
+    status: statusFilter.value || undefined,
+    start_date: startDate.value || undefined,
+    end_date: endDate.value || undefined,
+  })
+  if (format === 'pdf') {
+    downloadBase64File(res.data.filename, res.data.content_base64, res.data.mime_type)
+  } else {
+    downloadTextFile(res.data.filename, res.data.content, res.data.mime_type)
+  }
+  ElMessage.success('导出成功')
+}
+
+async function handleDetailPdfExport() {
+  if (!detail.value?.id) return
+  const res = await ordersApi.exportOrderDetail(detail.value.id, { export_format: 'pdf' })
+  downloadBase64File(res.data.filename, res.data.content_base64, res.data.mime_type)
+  ElMessage.success('详情 PDF 导出成功')
+}
+
+onMounted(() => {
+  fetchOrders()
+})
 </script>
 
 <style scoped>
@@ -103,36 +543,82 @@ p {
   gap: 8px;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.stat-item {
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid #d8e1eb;
-  background: #ffffff;
-}
-
-.stat-item span {
-  display: inline-flex;
+/* 两个独立日期选择器的容器 */
+.date-range-wrap {
+  display: flex;
   align-items: center;
   gap: 6px;
-  color: #64748b;
-  font-size: 12px;
 }
 
-.stat-item b {
-  display: block;
-  margin-top: 6px;
-  font-size: 26px;
-  color: #16202a;
+.date-sep {
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .table-card {
   border-radius: 12px;
+}
+
+.pagination-container {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.item-editor {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.item-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+.item-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.col-product {
+  width: 42%;
+  flex-shrink: 0;
+}
+
+.col-qty {
+  width: 18%;
+  flex-shrink: 0;
+}
+
+.col-price {
+  width: 22%;
+  flex-shrink: 0;
+}
+
+.option-disabled {
+  color: #a0a0a0;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 @media (max-width: 860px) {
@@ -142,8 +628,8 @@ p {
     gap: 10px;
   }
 
-  .stats {
-    grid-template-columns: 1fr;
+  .date-range-wrap {
+    flex-wrap: wrap;
   }
 }
 </style>

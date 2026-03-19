@@ -434,3 +434,72 @@ DELETE /api/admin/products/{product_id}/image
 - 上传图片：`POST /image`，`multipart/form-data`，字段名为 `image`。
 - 移除图片：`DELETE /image`，会将数据库 `cover_image` 清空，并删除服务器文件。
 - 更换图片：重复调用上传接口即可，系统会替换 URL 并清理旧图文件。
+
+---
+
+### 订单管理（新增）
+
+```http
+GET    /api/admin/orders
+GET    /api/admin/orders/{order_id}
+POST   /api/admin/orders
+GET    /api/admin/orders/export
+GET    /api/admin/orders/{order_id}/export
+```
+
+#### 1) 订单列表
+
+```http
+GET /api/admin/orders?page=1&page_size=10&search=关键词&status=in_progress&start_date=2026-03-01&end_date=2026-03-19
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| page | int | 1 | 当前页，最小 1 |
+| page_size | int | 10 | 每页条数，1~100 |
+| search | string | - | 订单号/客户名称模糊搜索 |
+| status | string | - | `pending_acceptance \| in_progress \| completed \| cancelled` |
+| start_date | string(date) | - | 创建时间起始日期 |
+| end_date | string(date) | - | 创建时间结束日期 |
+
+#### 2) 创建订单
+
+```http
+POST /api/admin/orders
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| customer_id | int | 是 | 客户 ID（必须为有效且激活客户） |
+| priority | string | 否 | `high \| medium \| low`，默认 `medium` |
+| description | string | 否 | 备注 |
+| items | array | 是 | 明细数组，至少 1 条 |
+
+`items[]` 字段：
+- `product_id`：产品 ID（必须存在且 `is_active=true`）
+- `qty`：数量，> 0
+- `unit_price`：单价（分），>= 0
+
+#### 3) 订单导出（按当前筛选结果）
+
+```http
+GET /api/admin/orders/export?export_format=csv|markdown|pdf
+```
+
+**说明：**
+- `csv`：`text/csv; charset=utf-8`，内容已带 UTF-8 BOM，Excel 打开中文不乱码。
+- `markdown`：`text/markdown; charset=utf-8`。
+- `pdf`：`application/pdf`，响应 `data.content_base64` 为 PDF 的 base64 内容。
+
+#### 4) 订单详情 PDF 导出
+
+```http
+GET /api/admin/orders/{order_id}/export?export_format=pdf
+```
+
+**说明：**
+- 返回 `application/pdf`，响应 `data.content_base64` 为订单详情 PDF 的 base64 内容。
