@@ -1150,7 +1150,10 @@ class AdminService:
     def _safe_pdf_text(value) -> str:
         if value is None:
             return "-"
-        return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        text = str(value)
+        text = text.replace("\ufeff", "")   # BOM
+        text = text.replace("\u200b", "")   # 零宽字符
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     @staticmethod
     def _cn_now_str() -> str:
@@ -1172,7 +1175,7 @@ class AdminService:
         )
 
         flowables = [
-            Paragraph("订单列表导出", styles["title"]),
+            Paragraph(self._safe_pdf_text("订单列表导出"), styles["title"]),
             Spacer(1, 8),
             Paragraph(f"导出时间：{self._cn_now_str()}　条数：{len(items)}", styles["subtitle"]),
             Spacer(1, 10),
@@ -1239,7 +1242,7 @@ class AdminService:
         )
 
         flowables = [
-            Paragraph(f"订单详情导出 · {self._safe_pdf_text(detail['order_no'])}", styles["title"]),
+            Paragraph(self._safe_pdf_text(f"订单详情导出 --- {detail['order_no']}"),styles["title"]),
             Spacer(1, 8),
             Paragraph(f"导出时间：{self._cn_now_str()}", styles["subtitle"]),
             Spacer(1, 8),
