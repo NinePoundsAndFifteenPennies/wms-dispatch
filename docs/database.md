@@ -200,11 +200,14 @@ resources/
 | status | VARCHAR(20) | NOT NULL, DEFAULT 'pending_acceptance' | pending_acceptance / in_progress / completed / cancelled |
 | priority | VARCHAR(8) | NOT NULL, DEFAULT 'medium' | high / medium / low |
 | accepted_at | TIMESTAMP | | 接单时间 |
+| timeout_revert_count | INTEGER | NOT NULL, DEFAULT 0 | 接单后因超时未派工导致的回退次数 |
+| last_reverted_at | TIMESTAMP | | 最近一次超时回退时间 |
 | completed_at | TIMESTAMP | | 完成时间 |
 | cancelled_at | TIMESTAMP | | 取消时间 |
 | cancelled_by | INTEGER | FK → users.id | 取消人 |
 | cancellation_reason | TEXT | | 取消原因 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
 
 **补充说明（迁移）**：已通过迁移脚本将 `users/warehouses/products/customers/inventory/stocktakes/inventory_movements/orders` 既有时间数据按 `+8 hours` 换算，以统一为国区时间口径。
 
@@ -214,6 +217,10 @@ resources/
 - `pending_acceptance`：仅管理员可取消。
 - `in_progress`：仅责任调度员可取消，且取消前必须不存在 `pending`/`in_progress` 工单。
 - 取消后写入管理员通知（当前单管理员场景落 1 条 `notifications` 记录）。
+
+**超时回退审计口径**：
+- 每次触发“接单后 24 小时未派工”回退时，`timeout_revert_count += 1`。
+- `last_reverted_at` 记录最近一次回退时间，用于告警与运营分析。
 
 **结构结论**：`orders` 与 `order_items` 保持拆分，不合并。
 - 订单天然是 1:N 明细模型，合并会破坏范式并引入重复字段。
@@ -249,8 +256,11 @@ resources/
 | completed_by | INTEGER | FK → users.id | 阶段完成操作人 |
 | remark | TEXT | | 手动阶段完成备注 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
 
 **约束**：`UNIQUE (order_id, stage_type)`
+
+**初始化口径（固定）**：订单接单进入 `in_progress` 时，一次性创建三条阶段记录（`picking`/`staging`/`shipping`），初始状态统一为 `not_started`。
 
 **阶段完成规则（由应用层保证）**：
 阶段完成有两条路径，均由应用层在写操作前校验，数据库不直接强制：
@@ -273,7 +283,7 @@ resources/
 |------|------|------|------|
 | id | SERIAL | PK | 工作单ID |
 | order_id | INTEGER | FK → orders.id, NOT NULL | 关联订单 |
-| stage_type | VARCHAR(16) | NOT NULL | picking / staging / shipping |
+| stage_id | INTEGER | FK → order_stages.id, NOT NULL, ON DELETE RESTRICT | 关联阶段 |
 | worker_id | INTEGER | FK → users.id, NOT NULL | 工人ID |
 | dispatcher_id | INTEGER | FK → users.id, NOT NULL | 分配调度员 |
 | warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 操作仓库（冗余字段，用于查询优化） |
@@ -290,10 +300,12 @@ resources/
 | terminated_by | INTEGER | FK → users.id | 终止人 |
 | termination_reason | TEXT | | 终止原因 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
 
 **一致性约束建议（推荐入库）**：
 - 增加 `orders(id, dispatcher_id)` 复合唯一约束。
 - 增加复合外键 `work_orders(order_id, dispatcher_id) -> orders(id, dispatcher_id)`，确保工单调度员与订单责任调度员一致。
+- 增加外键 `work_orders(stage_id) -> order_stages(id)`，通过阶段主键建立强关联；`stage_type` 从 `order_stages` 读取，不在 `work_orders` 冗余。
 - 使用约束触发器保证“已取消订单不可存在 `pending`/`in_progress` 工单”。
 
 ---
@@ -328,6 +340,7 @@ resources/
 | source | VARCHAR(8) | NOT NULL, DEFAULT 'manual' | manual / agent |
 | agent_reason | TEXT | | AI建议理由 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
 | approved_at | TIMESTAMP | | 审批时间 |
 | executed_at | TIMESTAMP | | 来源仓扣减完成时间 |
 | completed_at | TIMESTAMP | | 目标仓确认入库完成时间 |
@@ -350,6 +363,7 @@ resources/
 | confirmed_by | INTEGER | FK → users.id | 确认入库人 |
 | confirmed_at | TIMESTAMP | | 确认入库时间 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
 
 **约束**：`UNIQUE (transfer_order_id)`
 
@@ -432,6 +446,8 @@ warehouses (1) ──── (N) inventory
 orders (1) ──── (N) order_items
          ├──── (N) order_stages
          └──── (N) work_orders
+
+order_stages (1) ──── (N) work_orders (stage_id)
 
 inventory (1) ──── (N) stocktakes
           └──── (N) inventory_movements

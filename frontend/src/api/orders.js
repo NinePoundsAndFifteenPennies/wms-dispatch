@@ -13,6 +13,18 @@ export const ordersApi = {
     return http.post('/admin/orders', data)
   },
 
+  updatePendingOrder(orderId, data) {
+    return http.patch(`/admin/orders/${orderId}/pending`, data)
+  },
+
+  cancelPendingOrder(orderId, data) {
+    return http.post(`/admin/orders/${orderId}/cancel`, data)
+  },
+
+  reopenCancelledOrder(orderId) {
+    return http.post(`/admin/orders/${orderId}/reopen`)
+  },
+
   exportOrders(params) {
     return http.get('/admin/orders/export', { params })
   },

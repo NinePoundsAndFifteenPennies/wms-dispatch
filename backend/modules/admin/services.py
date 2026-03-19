@@ -25,8 +25,9 @@ from models.user import User
 from models.warehouse import Warehouse
 from modules.admin.schemas import (
     CustomerCreate,
-    OrderCreate,
     CustomerUpdate,
+    OrderCreate,
+    OrderPendingUpdateRequest,
     ProductCreate,
     ProductUpdate,
     StocktakeAdjustRequest,
@@ -923,6 +924,114 @@ class AdminService:
             except Exception as e:
                 await self.session.rollback()
                 raise HTTPException(status_code=400, detail=str(e))
+
+        raise HTTPException(status_code=409, detail="Failed to generate unique order number")
+
+    async def update_pending_order(self, order_id: int, payload: OrderPendingUpdateRequest):
+        order_result = await self.session.execute(select(Order).where(Order.id == order_id))
+        order = order_result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if order.status != "pending_acceptance":
+            raise HTTPException(status_code=400, detail="Only pending orders can be edited")
+
+        product_ids = [item.product_id for item in payload.items]
+        if len(set(product_ids)) != len(product_ids):
+            raise HTTPException(status_code=400, detail="Duplicate product in order items is not allowed")
+
+        products_result = await self.session.execute(select(Product.id).where(Product.id.in_(product_ids)))
+        existing_product_ids = {row[0] for row in products_result.all()}
+        if existing_product_ids != set(product_ids):
+            raise HTTPException(status_code=400, detail="Order items contain invalid products")
+
+        try:
+            order.priority = payload.priority
+            order.description = payload.description
+            order.updated_at = datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).replace(tzinfo=None)
+
+            await self.session.execute(text("DELETE FROM order_items WHERE order_id = :order_id"), {"order_id": order.id})
+
+            for item in payload.items:
+                self.session.add(
+                    OrderItem(
+                        order_id=order.id,
+                        product_id=item.product_id,
+                        qty=item.qty,
+                        unit_price=item.unit_price,
+                    )
+                )
+
+            await self.session.commit()
+            return await self.get_order_detail(order.id)
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(status_code=400, detail=f"Update order failed: {str(e)}")
+
+    async def cancel_pending_order(self, order_id: int, cancellation_reason: str, cancelled_by: Optional[int] = None):
+        order_result = await self.session.execute(select(Order).where(Order.id == order_id))
+        order = order_result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if order.status != "pending_acceptance":
+            raise HTTPException(status_code=400, detail="Only pending orders can be cancelled by admin here")
+
+        reason = (cancellation_reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="Cancellation reason is required")
+
+        order.status = "cancelled"
+        order.cancelled_at = datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).replace(tzinfo=None)
+        order.cancelled_by = cancelled_by
+        order.cancellation_reason = reason
+        order.updated_at = datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).replace(tzinfo=None)
+
+        await self.session.commit()
+        return await self.get_order_detail(order.id)
+
+    async def reopen_cancelled_order(self, order_id: int):
+        source_order_result = await self.session.execute(select(Order).where(Order.id == order_id))
+        source_order = source_order_result.scalar_one_or_none()
+        if not source_order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if source_order.status != "cancelled":
+            raise HTTPException(status_code=400, detail="Only cancelled orders can be reopened")
+
+        source_items_result = await self.session.execute(
+            select(OrderItem).where(OrderItem.order_id == source_order.id).order_by(OrderItem.id.asc())
+        )
+        source_items = source_items_result.scalars().all()
+        if not source_items:
+            raise HTTPException(status_code=400, detail="Cancelled order has no items to reopen")
+
+        for _ in range(3):
+            order_no = await self._next_order_no()
+            new_order = Order(
+                order_no=order_no,
+                customer_id=source_order.customer_id,
+                description=source_order.description,
+                priority=source_order.priority,
+                status="pending_acceptance",
+            )
+            self.session.add(new_order)
+            try:
+                await self.session.flush()
+                for item in source_items:
+                    self.session.add(
+                        OrderItem(
+                            order_id=new_order.id,
+                            product_id=item.product_id,
+                            qty=item.qty,
+                            unit_price=item.unit_price,
+                        )
+                    )
+                await self.session.commit()
+                return await self.get_order_detail(new_order.id)
+            except IntegrityError:
+                await self.session.rollback()
+                continue
+            except Exception as e:
+                await self.session.rollback()
+                raise HTTPException(status_code=400, detail=f"Reopen order failed: {str(e)}")
 
         raise HTTPException(status_code=409, detail="Failed to generate unique order number")
 

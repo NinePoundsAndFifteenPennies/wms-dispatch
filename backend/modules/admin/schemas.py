@@ -230,6 +230,8 @@ class OrderListItemResponse(BaseModel):
     status: OrderStatus
     priority: OrderPriority
     accepted_at: Optional[datetime] = None
+    timeout_revert_count: int = 0
+    last_reverted_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     created_at: datetime
@@ -255,6 +257,16 @@ class OrderCreate(BaseModel):
     items: List[OrderItemCreate] = Field(min_length=1)
 
 
+class OrderPendingUpdateRequest(BaseModel):
+    priority: OrderPriority
+    description: Optional[str] = None
+    items: List[OrderItemCreate] = Field(min_length=1)
+
+
+class OrderCancelRequest(BaseModel):
+    cancellation_reason: str = Field(min_length=1, max_length=500)
+
+
 class OrderCreateResponse(BaseModel):
     id: int
     order_no: str
@@ -265,6 +277,8 @@ class OrderCreateResponse(BaseModel):
     status: OrderStatus
     priority: OrderPriority
     accepted_at: Optional[datetime] = None
+    timeout_revert_count: int = 0
+    last_reverted_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     cancelled_by: Optional[int] = None
@@ -301,6 +315,8 @@ class OrderDetailResponse(BaseModel):
     status: OrderStatus
     priority: OrderPriority
     accepted_at: Optional[datetime] = None
+    timeout_revert_count: int = 0
+    last_reverted_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     cancelled_by: Optional[int] = None

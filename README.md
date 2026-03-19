@@ -102,6 +102,8 @@ docker compose up -d
 
 # 后端
 cd backend
+python -m venv venv # 只创建一次，后面直接激活即可
+venv\Scripts\activate  # Windows激活虚拟环境
 pip install -r requirements.txt
 alembic upgrade head      # 执行数据库迁移
 uvicorn main:app --reload # 启动开发服务器

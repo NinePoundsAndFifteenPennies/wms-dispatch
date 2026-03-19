@@ -16,6 +16,7 @@
   - Run dev server: `npm run dev` (Vite proxies `/api` to `localhost:8000`)
   - Build: `npm run build`
 - **Backend**:
+  - **Virtual Environment**: Always activate the existing virtual environment (`source backend/venv/bin/activate` on macOS/Linux, `backend\venv\Scripts\activate` on Windows) before running any Python-related commands. Never use the global Python interpreter directly.
   - Install dependencies: `cd backend && pip install -r requirements.txt`
   - Run dev server: `uvicorn main:app --reload` (runs on `localhost:8000`)
   - Database migrations: `alembic upgrade head`

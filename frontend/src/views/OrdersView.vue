@@ -97,8 +97,26 @@
         <el-table-column label="创建时间" min-width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="96" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="row.status === 'pending_acceptance'"
+              link
+              type="primary"
+              @click="openEditDialog(row.id)"
+            >编辑</el-button>
+            <el-button
+              v-if="row.status === 'pending_acceptance'"
+              link
+              type="danger"
+              @click="openCancelDialog(row.id)"
+            >取消</el-button>
+            <el-button
+              v-if="row.status === 'cancelled'"
+              link
+              type="success"
+              @click="reopenOrder(row.id)"
+            >重开</el-button>
             <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
           </template>
         </el-table-column>
@@ -237,12 +255,95 @@
         </el-table>
       </el-card>
     </el-dialog>
+
+    <el-dialog v-model="editDialogVisible" title="编辑待接单订单" width="860px">
+      <el-form ref="editFormRef" :model="editForm" :rules="createRules" label-width="100px">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="优先级" prop="priority">
+              <el-select v-model="editForm.priority" style="width: 100%">
+                <el-option label="高" value="high" />
+                <el-option label="中" value="medium" />
+                <el-option label="低" value="low" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="订单号">
+              <el-input v-model="editForm.order_no" disabled />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="备注">
+          <el-input v-model="editForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+
+        <el-form-item label="订单明细" prop="items">
+          <div class="item-editor">
+            <div class="item-header">
+              <span class="col-product">产品</span>
+              <span class="col-qty">数量</span>
+              <span class="col-price">单价(分)</span>
+            </div>
+            <div v-for="(item, index) in editForm.items" :key="index" class="item-row">
+              <el-select
+                v-model="item.product_id"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="fetchProductOptions"
+                :loading="productLoading"
+                placeholder="搜索产品（名称/SKU/类别）"
+                class="col-product"
+              >
+                <el-option
+                  v-for="product in getEditProductOptionsForRow(index)"
+                  :key="product.id"
+                  :label="`${product.name}（${product.sku}）`"
+                  :value="product.id"
+                />
+              </el-select>
+              <el-input-number v-model="item.qty" :min="1" :precision="0" controls-position="right" class="col-qty" />
+              <el-input-number v-model="item.unit_price" :min="0" :precision="0" controls-position="right" class="col-price" />
+              <el-button type="danger" plain @click="removeEditItem(index)" :disabled="editForm.items.length <= 1">
+                删除
+              </el-button>
+            </div>
+            <el-button type="primary" plain @click="addEditItem">新增明细</el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="updating" @click="submitEdit">保存修改</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="cancelDialogVisible" title="取消订单" width="520px">
+      <el-form ref="cancelFormRef" :model="cancelForm" :rules="cancelRules" label-width="100px">
+        <el-form-item label="取消原因" prop="cancellation_reason">
+          <el-input
+            v-model="cancelForm.cancellation_reason"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="请输入取消原因（必填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cancelDialogVisible = false">返回</el-button>
+        <el-button type="danger" :loading="cancelling" @click="submitCancel">确认取消</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus } from '@element-plus/icons-vue'
 import { customersApi } from '../api/customers'
 import { ordersApi } from '../api/orders'
@@ -263,6 +364,25 @@ const endDate = ref('')
 const detailVisible = ref(false)
 const detail = ref(null)
 
+const editDialogVisible = ref(false)
+const editFormRef = ref()
+const updating = ref(false)
+const editingOrderId = ref(null)
+const editForm = reactive({
+  order_no: '',
+  priority: 'medium',
+  description: '',
+  items: [{ product_id: null, qty: 1, unit_price: 0 }],
+})
+
+const cancelDialogVisible = ref(false)
+const cancelFormRef = ref()
+const cancelling = ref(false)
+const cancellingOrderId = ref(null)
+const cancelForm = reactive({
+  cancellation_reason: '',
+})
+
 const createDialogVisible = ref(false)
 const createFormRef = ref()
 const creating = ref(false)
@@ -281,6 +401,10 @@ const createForm = reactive({
 const createRules = {
   customer_id: [{ required: true, message: '请选择客户', trigger: 'change' }],
   items: [{ required: true, message: '请至少填写一条订单明细', trigger: 'change' }],
+}
+
+const cancelRules = {
+  cancellation_reason: [{ required: true, message: '请输入取消原因', trigger: 'blur' }],
 }
 
 // ── 日期约束：开始日期不能晚于已选的结束日期 ──────────────────────────
@@ -391,7 +515,7 @@ async function fetchProductOptions(keyword = '') {
       page_size: 100,
       search: keyword || undefined,
     })
-    productOptions.value = (res.data.items || []).filter((item) => item.is_active)
+    productOptions.value = res.data.items || []
   } finally {
     productLoading.value = false
   }
@@ -399,6 +523,13 @@ async function fetchProductOptions(keyword = '') {
 
 function getProductOptionsForRow(index) {
   const selectedElsewhere = createForm.items
+    .map((item, i) => (i !== index ? item.product_id : null))
+    .filter(Boolean)
+  return productOptions.value.filter((p) => !selectedElsewhere.includes(p.id))
+}
+
+function getEditProductOptionsForRow(index) {
+  const selectedElsewhere = editForm.items
     .map((item, i) => (i !== index ? item.product_id : null))
     .filter(Boolean)
   return productOptions.value.filter((p) => !selectedElsewhere.includes(p.id))
@@ -418,6 +549,15 @@ function addItem() {
 function removeItem(index) {
   if (createForm.items.length <= 1) return
   createForm.items.splice(index, 1)
+}
+
+function addEditItem() {
+  editForm.items.push({ product_id: null, qty: 1, unit_price: 0 })
+}
+
+function removeEditItem(index) {
+  if (editForm.items.length <= 1) return
+  editForm.items.splice(index, 1)
 }
 
 async function submitCreate() {
@@ -447,6 +587,106 @@ async function submitCreate() {
   } finally {
     creating.value = false
   }
+}
+
+async function openEditDialog(orderId) {
+  const res = await ordersApi.getOrderDetail(orderId)
+  const data = res.data
+  if (data.status !== 'pending_acceptance') {
+    ElMessage.warning('仅待接单订单可编辑')
+    return
+  }
+
+  editingOrderId.value = orderId
+  editForm.order_no = data.order_no
+  editForm.priority = data.priority
+  editForm.description = data.description || ''
+  editForm.items = (data.items || []).map((item) => ({
+    product_id: item.product_id,
+    qty: item.qty,
+    unit_price: item.unit_price,
+  }))
+  if (!editForm.items.length) {
+    editForm.items = [{ product_id: null, qty: 1, unit_price: 0 }]
+  }
+  await fetchProductOptions('')
+  editDialogVisible.value = true
+}
+
+async function submitEdit() {
+  const valid = await editFormRef.value?.validate().catch(() => false)
+  if (!valid || !editingOrderId.value) return
+
+  if (editForm.items.some((item) => !item.product_id || item.qty <= 0 || item.unit_price < 0)) {
+    ElMessage.error('请完整填写订单明细')
+    return
+  }
+
+  updating.value = true
+  try {
+    await ordersApi.updatePendingOrder(editingOrderId.value, {
+      priority: editForm.priority,
+      description: editForm.description || null,
+      items: editForm.items.map((item) => ({
+        product_id: item.product_id,
+        qty: item.qty,
+        unit_price: item.unit_price,
+      })),
+    })
+    ElMessage.success('订单已更新')
+    editDialogVisible.value = false
+    await fetchOrders()
+    if (detailVisible.value && detail.value?.id === editingOrderId.value) {
+      await openDetail(editingOrderId.value)
+    }
+  } finally {
+    updating.value = false
+  }
+}
+
+function openCancelDialog(orderId) {
+  cancellingOrderId.value = orderId
+  cancelForm.cancellation_reason = ''
+  cancelDialogVisible.value = true
+}
+
+async function submitCancel() {
+  const valid = await cancelFormRef.value?.validate().catch(() => false)
+  if (!valid || !cancellingOrderId.value) return
+
+  cancelling.value = true
+  try {
+    await ordersApi.cancelPendingOrder(cancellingOrderId.value, {
+      cancellation_reason: cancelForm.cancellation_reason,
+    })
+    ElMessage.success('订单已取消')
+    cancelDialogVisible.value = false
+    await fetchOrders()
+  } finally {
+    cancelling.value = false
+  }
+}
+
+async function reopenOrder(orderId) {
+  try {
+    await ElMessageBox.confirm(
+      '将基于该已取消订单重开一个新订单（新订单号，优先级/备注/明细默认一致）。是否继续？',
+      '重开订单确认',
+      {
+        confirmButtonText: '继续重开',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  const res = await ordersApi.reopenCancelledOrder(orderId)
+  const newOrderId = res.data.id
+  ElMessage.success(`已重开新订单：${res.data.order_no}`)
+  await fetchOrders()
+  await openDetail(newOrderId)
 }
 
 // ── 导出 ───────────────────────────────────────────────────────────────

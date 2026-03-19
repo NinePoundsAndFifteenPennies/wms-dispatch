@@ -8,9 +8,11 @@ from modules.admin.schemas import (
     BatchDeleteRequest,
     CustomerCreate,
     OrderCreate,
+    OrderCancelRequest,
     OrderCreateResponse,
     OrderDetailResponse,
     OrderListResponse,
+    OrderPendingUpdateRequest,
     CustomerListResponse,
     CustomerResponse,
     CustomerUpdate,
@@ -386,6 +388,37 @@ async def get_order_detail(order_id: int, service: AdminService = Depends(get_ad
 @orders_router.post("", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(payload: OrderCreate, service: AdminService = Depends(get_admin_service)):
     return await service.create_order(payload)
+
+
+@orders_router.patch("/{order_id}/pending", response_model=OrderDetailResponse)
+async def update_pending_order(
+    order_id: int,
+    payload: OrderPendingUpdateRequest,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.update_pending_order(order_id, payload)
+
+
+@orders_router.post("/{order_id}/cancel", response_model=OrderDetailResponse)
+async def cancel_pending_order(
+    order_id: int,
+    payload: OrderCancelRequest,
+    service: AdminService = Depends(get_admin_service),
+    current_user=Depends(get_current_user_required),
+):
+    return await service.cancel_pending_order(
+        order_id,
+        payload.cancellation_reason,
+        cancelled_by=current_user.get("id"),
+    )
+
+
+@orders_router.post("/{order_id}/reopen", response_model=OrderDetailResponse)
+async def reopen_cancelled_order(
+    order_id: int,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.reopen_cancelled_order(order_id)
 
 router.include_router(users_router)
 router.include_router(warehouses_router)
