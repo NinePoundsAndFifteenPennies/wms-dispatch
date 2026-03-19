@@ -3,15 +3,18 @@ import csv
 from datetime import date, datetime
 from io import BytesIO, StringIO
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 import bcrypt
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from models.customer import Customer
 from models.inventory import Inventory
@@ -38,7 +41,7 @@ from modules.admin.schemas import (
 from modules.shared.storage import save_image_file
 from modules.shared.storage import delete_resource_file_by_url
 
-PDF_TEXT_LINE_MAX_LENGTH = 120
+SYSTEM_TIMEZONE = "Asia/Shanghai"
 
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode("utf-8")
@@ -1105,77 +1108,199 @@ class AdminService:
         except KeyError:
             pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
 
+    @staticmethod
+    def _build_pdf_styles():
+        styles = getSampleStyleSheet()
+        return {
+            "title": ParagraphStyle(
+                "title_cn",
+                parent=styles["Heading1"],
+                fontName="STSong-Light",
+                fontSize=18,
+                leading=24,
+                textColor=colors.HexColor("#1f2937"),
+            ),
+            "subtitle": ParagraphStyle(
+                "subtitle_cn",
+                parent=styles["Normal"],
+                fontName="STSong-Light",
+                fontSize=11,
+                leading=16,
+                textColor=colors.HexColor("#4b5563"),
+            ),
+            "cell": ParagraphStyle(
+                "cell_cn",
+                parent=styles["Normal"],
+                fontName="STSong-Light",
+                fontSize=10,
+                leading=14,
+                textColor=colors.HexColor("#111827"),
+            ),
+            "meta": ParagraphStyle(
+                "meta_cn",
+                parent=styles["Normal"],
+                fontName="STSong-Light",
+                fontSize=10.5,
+                leading=15,
+                textColor=colors.HexColor("#111827"),
+            ),
+        }
+
+    @staticmethod
+    def _safe_pdf_text(value) -> str:
+        if value is None:
+            return "-"
+        return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    @staticmethod
+    def _cn_now_str() -> str:
+        return datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).strftime("%Y-%m-%d %H:%M:%S")
+
     def _build_orders_list_pdf(self, items: List[dict]) -> bytes:
         self._register_cn_font()
+        styles = self._build_pdf_styles()
         buffer = BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=28,
+            rightMargin=28,
+            topMargin=26,
+            bottomMargin=26,
+            title="订单列表导出",
+            author="WMS Dispatch",
+        )
 
-        pdf.setFont("STSong-Light", 15)
-        pdf.drawString(40, y, "订单列表导出")
-        y -= 26
+        flowables = [
+            Paragraph("订单列表导出", styles["title"]),
+            Spacer(1, 8),
+            Paragraph(f"导出时间：{self._cn_now_str()}　条数：{len(items)}", styles["subtitle"]),
+            Spacer(1, 10),
+        ]
 
-        pdf.setFont("STSong-Light", 10)
-        for idx, row in enumerate(items, start=1):
-            line = (
-                f"{idx}. {row['order_no']} | 客户:{row['customer_name']} | 仓库:{row['warehouse_name']} "
-                f"| 状态:{row['status']} | 优先级:{row['priority']} | 金额:{row['total_amount']}"
+        table_rows = [
+            ["订单号", "客户", "仓库", "优先级", "状态", "责任调度员", "创建时间", "总件数", "总金额(分)"]
+        ]
+        for row in items:
+            table_rows.append(
+                [
+                    Paragraph(self._safe_pdf_text(row["order_no"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["customer_name"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["warehouse_name"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["priority"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["status"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["dispatcher_name"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["created_at"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["total_items"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(row["total_amount"]), styles["cell"]),
+                ]
             )
-            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
-            y -= 16
-            if y < 40:
-                pdf.showPage()
-                pdf.setFont("STSong-Light", 10)
-                y = height - 40
 
-        pdf.save()
+        table = Table(
+            table_rows,
+            repeatRows=1,
+            colWidths=[72, 66, 58, 40, 52, 62, 84, 40, 58],
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, -1), "STSong-Light"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 10.5),
+                    ("FONTSIZE", (0, 1), (-1, -1), 9.5),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f8fafc")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#ffffff"), colors.HexColor("#f8fafc")]),
+                    ("ALIGN", (7, 1), (8, -1), "RIGHT"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        flowables.append(table)
+        doc.build(flowables)
         return buffer.getvalue()
 
     def _build_order_detail_pdf(self, detail: dict) -> bytes:
         self._register_cn_font()
+        styles = self._build_pdf_styles()
         buffer = BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=28,
+            rightMargin=28,
+            topMargin=26,
+            bottomMargin=26,
+            title=f"订单详情-{detail['order_no']}",
+            author="WMS Dispatch",
+        )
 
-        pdf.setFont("STSong-Light", 15)
-        pdf.drawString(40, y, f"订单详情导出 - {detail['order_no']}")
-        y -= 26
-
-        pdf.setFont("STSong-Light", 11)
-        head_lines = [
-            f"订单号: {detail['order_no']}",
-            f"客户: {detail['customer_name']} ({detail['customer_contact']})",
-            f"仓库: {detail['warehouse_name'] or '-'}",
-            f"调度员: {detail['dispatcher_name'] or '-'}",
-            f"状态: {detail['status']}    优先级: {detail['priority']}",
-            f"总金额(分): {detail['total_amount']}    总件数: {detail['total_items']}",
-            f"创建时间: {detail['created_at']}",
+        flowables = [
+            Paragraph(f"订单详情导出 · {self._safe_pdf_text(detail['order_no'])}", styles["title"]),
+            Spacer(1, 8),
+            Paragraph(f"导出时间：{self._cn_now_str()}", styles["subtitle"]),
+            Spacer(1, 8),
         ]
-        for line in head_lines:
-            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
-            y -= 16
 
-        y -= 6
-        pdf.setFont("STSong-Light", 12)
-        pdf.drawString(40, y, "订单明细:")
-        y -= 18
-
-        pdf.setFont("STSong-Light", 10)
-        for idx, item in enumerate(detail["items"], start=1):
-            line = (
-                f"{idx}. {item['product_sku']} | {item['product_name']} | 类别:{item['product_category'] or '-'} "
-                f"| 数量:{item['qty']} | 单价:{item['unit_price']} | 小计:{item['subtotal']}"
+        meta_rows = [
+            [Paragraph("<b>订单号</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["order_no"]), styles["meta"])],
+            [Paragraph("<b>客户</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["customer_name"]), styles["meta"])],
+            [Paragraph("<b>客户联系方式</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["customer_contact"]), styles["meta"])],
+            [Paragraph("<b>仓库</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["warehouse_name"]), styles["meta"])],
+            [Paragraph("<b>责任调度员</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["dispatcher_name"]), styles["meta"])],
+            [Paragraph("<b>状态 / 优先级</b>", styles["meta"]), Paragraph(f"{self._safe_pdf_text(detail['status'])} / {self._safe_pdf_text(detail['priority'])}", styles["meta"])],
+            [Paragraph("<b>创建时间</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["created_at"]), styles["meta"])],
+            [Paragraph("<b>总件数 / 总金额(分)</b>", styles["meta"]), Paragraph(f"{self._safe_pdf_text(detail['total_items'])} / {self._safe_pdf_text(detail['total_amount'])}", styles["meta"])],
+        ]
+        meta_table = Table(meta_rows, colWidths=[120, 390])
+        meta_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, -1), "STSong-Light"),
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
             )
-            pdf.drawString(40, y, line[:PDF_TEXT_LINE_MAX_LENGTH])
-            y -= 16
-            if y < 40:
-                pdf.showPage()
-                pdf.setFont("STSong-Light", 10)
-                y = height - 40
+        )
+        flowables.extend([meta_table, Spacer(1, 12), Paragraph("订单明细", styles["subtitle"]), Spacer(1, 6)])
 
-        pdf.save()
+        detail_rows = [["SKU", "产品名称", "类别", "数量", "单价(分)", "小计(分)"]]
+        for item in detail["items"]:
+            detail_rows.append(
+                [
+                    Paragraph(self._safe_pdf_text(item["product_sku"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(item["product_name"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(item["product_category"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(item["qty"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(item["unit_price"]), styles["cell"]),
+                    Paragraph(self._safe_pdf_text(item["subtotal"]), styles["cell"]),
+                ]
+            )
+
+        detail_table = Table(detail_rows, repeatRows=1, colWidths=[68, 170, 80, 48, 62, 62])
+        detail_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, -1), "STSong-Light"),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d4ed8")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#eff6ff")]),
+                    ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#bfdbfe")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        flowables.append(detail_table)
+        doc.build(flowables)
         return buffer.getvalue()
 
     async def list_products(self, page: int = 1, page_size: int = 10, search: Optional[str] = None):
