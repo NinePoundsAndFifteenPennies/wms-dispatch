@@ -208,6 +208,17 @@ resources/
 
 **说明**：订单总金额通过查询 `SUM(order_items.qty * order_items.unit_price)` 动态计算，不单独存储。
 
+**取消权限与规则口径（与业务规则文档一致）**：
+- `pending_acceptance`：仅管理员可取消。
+- `in_progress`：仅责任调度员可取消，且取消前必须不存在 `pending`/`in_progress` 工单。
+- 取消后写入管理员通知（当前单管理员场景落 1 条 `notifications` 记录）。
+
+**结构结论**：`orders` 与 `order_items` 保持拆分，不合并。
+- 订单天然是 1:N 明细模型，合并会破坏范式并引入重复字段。
+- 多 SKU 扩展、部分改价、审计追溯在分表设计下更清晰。
+- 库存预留/释放/扣减与明细数量映射依赖 `order_items` 粒度。
+- 动态金额计算（`SUM(qty * unit_price)`）与报表统计更可维护。
+
 ---
 
 ### 9. order_items（订单明细表）
@@ -279,6 +290,11 @@ resources/
 | termination_reason | TEXT | | 终止原因 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | 创建时间 |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | 更新时间 |
+
+**一致性约束建议（推荐入库）**：
+- 增加 `orders(id, dispatcher_id)` 复合唯一约束。
+- 增加复合外键 `work_orders(order_id, dispatcher_id) -> orders(id, dispatcher_id)`，确保工单调度员与订单责任调度员一致。
+- 使用约束触发器保证“已取消订单不可存在 `pending`/`in_progress` 工单”。
 
 ---
 
@@ -431,6 +447,12 @@ transfer_orders (1) ──── (1) inbound_records
 1. 接单、调拨申请、调拨审批、确认入库均在数据库事务内完成。
 2. 上述流程对涉及的 `inventory` 行执行 `SELECT ... FOR UPDATE` 行级锁。
 3. 业务写操作同步写入 `inventory_movements`，保证可审计可追溯。
+4. 订单取消属于库存关键路径（涉及预留释放），同样应纳入事务与行级锁策略。
+
+**并发口径说明**：
+- 数据一致性由数据库约束体系兜底（CHECK/FK/触发器），确保不会超卖。
+- `SELECT ... FOR UPDATE` 主要提升并发体验与性能：减少无效 `UPDATE + ROLLBACK`，更早返回库存不足。
+- 不使用 `FOR UPDATE` 也不会突破一致性约束，但在高并发下冲突成本更高。
 
 ---
 
@@ -443,4 +465,9 @@ CREATE INDEX idx_users_skills ON users(skill_picking, skill_staging, skill_shipp
 
 -- inventory 必须维持联合唯一约束
 CREATE UNIQUE INDEX idx_inventory_warehouse_product ON inventory(warehouse_id, product_id);
+
+-- 订单并发与熔断扫描优化
+CREATE INDEX idx_work_orders_order_status ON work_orders(order_id, status);
+CREATE INDEX idx_orders_dispatcher_status_accepted_at ON orders(dispatcher_id, status, accepted_at);
+CREATE INDEX idx_orders_in_progress_accepted_at ON orders(accepted_at) WHERE status = 'in_progress';
 ```
