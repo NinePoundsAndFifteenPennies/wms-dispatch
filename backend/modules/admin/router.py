@@ -336,7 +336,7 @@ async def list_orders(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
-    status: Optional[str] = Query(default=None, regex="^(pending_acceptance|in_progress|completed|cancelled)$"),
+    status: Optional[str] = Query(default=None, pattern="^(pending_acceptance|in_progress|completed|cancelled)$"),
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     service: AdminService = Depends(get_admin_service),
@@ -353,9 +353,9 @@ async def list_orders(
 
 @orders_router.get("/export")
 async def export_orders(
-    export_format: str = Query(default="csv", regex="^(csv|markdown)$"),
+    export_format: str = Query(default="csv", pattern="^(csv|markdown)$"),
     search: Optional[str] = None,
-    status: Optional[str] = Query(default=None, regex="^(pending_acceptance|in_progress|completed|cancelled)$"),
+    status: Optional[str] = Query(default=None, pattern="^(pending_acceptance|in_progress|completed|cancelled)$"),
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     service: AdminService = Depends(get_admin_service),

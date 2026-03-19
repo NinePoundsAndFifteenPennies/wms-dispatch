@@ -40,14 +40,39 @@
           <el-option label="已完成" value="completed" />
           <el-option label="已取消" value="cancelled" />
         </el-select>
-        <el-date-picker
-          v-model="dateRange"
-          type="daterange"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          value-format="YYYY-MM-DD"
-          style="width: 320px"
-        />
+
+        <!-- 日期范围：拆成两个独立 DatePicker，互不联动，可单独设置 -->
+        <div class="date-range-wrap">
+          <el-date-picker
+            v-model="startDate"
+            type="date"
+            placeholder="开始日期"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disableStartDate"
+            clearable
+            style="width: 160px"
+            @change="handleSearch"
+          />
+          <span class="date-sep">至</span>
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disableEndDate"
+            clearable
+            style="width: 160px"
+            @change="handleSearch"
+          />
+          <el-button
+            v-if="startDate || endDate"
+            link
+            type="info"
+            @click="clearDateRange"
+            style="margin-left: 2px"
+          >清除</el-button>
+        </div>
+
         <el-button type="primary" @click="handleSearch">查询</el-button>
       </section>
 
@@ -134,6 +159,11 @@
 
         <el-form-item label="订单明细" prop="items">
           <div class="item-editor">
+            <div class="item-header">
+              <span class="col-product">产品</span>
+              <span class="col-qty">数量</span>
+              <span class="col-price">单价(分)</span>
+            </div>
             <div v-for="(item, index) in createForm.items" :key="index" class="item-row">
               <el-select
                 v-model="item.product_id"
@@ -143,17 +173,17 @@
                 :remote-method="fetchProductOptions"
                 :loading="productLoading"
                 placeholder="搜索产品（名称/SKU/类别）"
-                style="width: 42%"
+                class="col-product"
               >
                 <el-option
-                  v-for="product in productOptions"
+                  v-for="product in getProductOptionsForRow(index)"
                   :key="product.id"
                   :label="`${product.name}（${product.sku}）`"
                   :value="product.id"
                 />
               </el-select>
-              <el-input-number v-model="item.qty" :min="1" :precision="0" style="width: 18%" />
-              <el-input-number v-model="item.unit_price" :min="0" :precision="0" style="width: 22%" />
+              <el-input-number v-model="item.qty" :min="1" :precision="0" controls-position="right" class="col-qty" />
+              <el-input-number v-model="item.unit_price" :min="0" :precision="0" controls-position="right" class="col-price" />
               <el-button type="danger" plain @click="removeItem(index)" :disabled="createForm.items.length <= 1">
                 删除
               </el-button>
@@ -220,7 +250,10 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const searchQuery = ref('')
 const statusFilter = ref('')
-const dateRange = ref([])
+
+// 拆分为两个独立日期，替代原来的 dateRange 数组
+const startDate = ref('')
+const endDate = ref('')
 
 const detailVisible = ref(false)
 const detail = ref(null)
@@ -232,6 +265,7 @@ const customerLoading = ref(false)
 const productLoading = ref(false)
 const customerOptions = ref([])
 const productOptions = ref([])
+
 const createForm = reactive({
   customer_id: null,
   priority: 'medium',
@@ -244,21 +278,38 @@ const createRules = {
   items: [{ required: true, message: '请至少填写一条订单明细', trigger: 'change' }],
 }
 
+// ── 日期约束：开始日期不能晚于已选的结束日期 ──────────────────────────
+function disableStartDate(time) {
+  if (!endDate.value) return false
+  return time.getTime() > new Date(endDate.value).getTime()
+}
+
+// 结束日期不能早于已选的开始日期
+function disableEndDate(time) {
+  if (!startDate.value) return false
+  return time.getTime() < new Date(startDate.value).getTime()
+}
+
+function clearDateRange() {
+  startDate.value = ''
+  endDate.value = ''
+  handleSearch()
+}
+
+// ── 工具函数 ───────────────────────────────────────────────────────────
 function statusText(status) {
-  return {
-    pending_acceptance: '待接单',
-    in_progress: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
-  }[status] || status
+  return (
+    {
+      pending_acceptance: '待接单',
+      in_progress: '进行中',
+      completed: '已完成',
+      cancelled: '已取消',
+    }[status] || status
+  )
 }
 
 function priorityText(priority) {
-  return {
-    high: '高',
-    medium: '中',
-    low: '低',
-  }[priority] || priority
+  return { high: '高', medium: '中', low: '低' }[priority] || priority
 }
 
 function formatDateTime(value) {
@@ -266,17 +317,17 @@ function formatDateTime(value) {
 }
 
 function buildQueryParams() {
-  const [startDate, endDate] = dateRange.value || []
   return {
     page: currentPage.value,
     page_size: pageSize.value,
     search: searchQuery.value || undefined,
     status: statusFilter.value || undefined,
-    start_date: startDate || undefined,
-    end_date: endDate || undefined,
+    start_date: startDate.value || undefined,
+    end_date: endDate.value || undefined,
   }
 }
 
+// ── 数据加载 ───────────────────────────────────────────────────────────
 async function fetchOrders() {
   loading.value = true
   try {
@@ -309,6 +360,7 @@ async function openDetail(orderId) {
   detailVisible.value = true
 }
 
+// ── 新建订单 ───────────────────────────────────────────────────────────
 function resetCreateForm() {
   createForm.customer_id = null
   createForm.priority = 'medium'
@@ -338,6 +390,13 @@ async function fetchProductOptions(keyword = '') {
   } finally {
     productLoading.value = false
   }
+}
+
+function getProductOptionsForRow(index) {
+  const selectedElsewhere = createForm.items
+    .map((item, i) => (i !== index ? item.product_id : null))
+    .filter(Boolean)
+  return productOptions.value.filter((p) => !selectedElsewhere.includes(p.id))
 }
 
 function openCreateDialog() {
@@ -385,6 +444,7 @@ async function submitCreate() {
   }
 }
 
+// ── 导出 ───────────────────────────────────────────────────────────────
 function downloadTextFile(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' })
   const url = window.URL.createObjectURL(blob)
@@ -398,13 +458,12 @@ function downloadTextFile(filename, content, mimeType) {
 }
 
 async function handleExport(format) {
-  const [startDate, endDate] = dateRange.value || []
   const res = await ordersApi.exportOrders({
     export_format: format,
     search: searchQuery.value || undefined,
     status: statusFilter.value || undefined,
-    start_date: startDate || undefined,
-    end_date: endDate || undefined,
+    start_date: startDate.value || undefined,
+    end_date: endDate.value || undefined,
   })
   downloadTextFile(res.data.filename, res.data.content, res.data.mime_type)
   ElMessage.success('导出成功')
@@ -451,6 +510,20 @@ p {
   gap: 8px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 两个独立日期选择器的容器 */
+.date-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-sep {
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .table-card {
@@ -469,10 +542,35 @@ p {
   gap: 8px;
 }
 
+.item-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
 .item-row {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.col-product {
+  width: 42%;
+  flex-shrink: 0;
+}
+
+.col-qty {
+  width: 18%;
+  flex-shrink: 0;
+}
+
+.col-price {
+  width: 22%;
+  flex-shrink: 0;
 }
 
 .option-disabled {
@@ -484,6 +582,10 @@ p {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+  }
+
+  .date-range-wrap {
+    flex-wrap: wrap;
   }
 }
 </style>
