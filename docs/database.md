@@ -193,7 +193,7 @@ resources/
 | id | SERIAL | PK | 订单ID |
 | order_no | VARCHAR(32) | UNIQUE, NOT NULL | 订单号 |
 | customer_id | INTEGER | FK → customers.id, NOT NULL | 客户ID |
-| warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 发货仓库 |
+| warehouse_id | INTEGER | FK → warehouses.id | 发货仓库(调度员接单后关联其所在仓库) |
 | dispatcher_id | INTEGER | FK → users.id | 责任调度员（接单后填写） |
 | description | TEXT | | 订单备注 |
 | status | VARCHAR(20) | NOT NULL, DEFAULT 'pending_acceptance' | pending_acceptance / in_progress / completed / cancelled |
