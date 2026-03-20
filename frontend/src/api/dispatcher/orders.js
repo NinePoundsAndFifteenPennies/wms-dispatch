@@ -9,8 +9,8 @@ export const dispatcherOrdersApi = {
     return http.get(`/dispatcher/orders/${orderId}`)
   },
 
-  acceptOrder(orderId) {
-    return http.post(`/dispatcher/orders/${orderId}/accept`)
+  acceptOrder(orderId, config = {}) {
+    return http.post(`/dispatcher/orders/${orderId}/accept`, undefined, config)
   },
 
   getMyOrders(params) {

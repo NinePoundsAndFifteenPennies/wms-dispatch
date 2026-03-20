@@ -517,6 +517,7 @@ POST /api/dispatcher/orders/{order_id}/accept
 GET  /api/dispatcher/my-orders
 GET  /api/dispatcher/my-orders/{order_id}
 GET  /api/dispatcher/dashboard-summary
+GET  /api/dispatcher/inventory
 ```
 
 ### 1) 接单中心列表（待接单）
@@ -555,6 +556,28 @@ POST /api/dispatcher/orders/{order_id}/accept
 - 成功后订单进入已接单流程（`in_progress`），并完成接单时序字段更新。
 - 接单过程执行库存可用量校验与预留，并初始化阶段信息。
 - 返回最新订单详情对象（结构同详情接口）。
+- 若库存可用量不足，返回 `400`，并在 `data.shortages` 中给出逐商品缺口明细（基于 `available` 对比）。
+
+**库存不足失败响应示例 (`400`)：**
+
+```json
+{
+  "code": 400,
+  "message": "可用库存不足，请先调拨补货后再接单",
+  "data": {
+    "shortages": [
+      {
+        "product_id": 8,
+        "sku": "SKU-10086",
+        "product_name": "标准纸箱",
+        "required_qty": 20,
+        "available_qty": 6,
+        "shortage_qty": 14
+      }
+    ]
+  }
+}
+```
 
 ### 4) 我的订单列表
 
@@ -604,3 +627,53 @@ GET /api/dispatcher/dashboard-summary
 
 **说明：**
 - 用于调度员布局顶部状态徽标、侧边栏“我的订单”数字、工作台聚合统计展示。
+
+### 7) 调度员库存中心（只读）
+
+```http
+GET /api/dispatcher/inventory?page=1&page_size=10&search=关键词
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| page | int | 1 | 当前页码，最小 1 |
+| page_size | int | 10 | 每页条数，1~100 |
+| search | string | - | 按产品名称 / SKU / 类别模糊搜索 |
+
+**成功响应示例：**
+
+```json
+{
+  "warehouse": {
+    "id": 1,
+    "name": "北京中心周转仓",
+    "address": "北京市朝阳区...",
+    "description": "华北区域主仓",
+    "cover_image": "/resources/warehouse_covers/warehouse_1.png",
+    "is_active": true
+  },
+  "items": [
+    {
+      "id": 21,
+      "product_id": 8,
+      "sku": "SKU-10086",
+      "product_name": "标准纸箱",
+      "category": "包装物料",
+      "product_cover_image": "/resources/products/p8.png",
+      "product_is_active": true,
+      "qty_on_hand": 120,
+      "qty_reserved": 10,
+      "qty_locked": 5,
+      "qty_threshold": 30,
+      "qty_available": 105
+    }
+  ],
+  "total": 1
+}
+```
+
+**说明：**
+- 返回当前登录调度员所属仓库的库存分页列表。
+- 该接口为只读接口，不提供盘点修正/进货等写操作。

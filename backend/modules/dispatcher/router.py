@@ -8,6 +8,7 @@ from modules.dispatcher.schemas import (
     DispatcherDashboardSummaryResponse,
     DispatcherOrderDetailResponse,
     DispatcherOrderListResponse,
+    DispatcherWarehouseInventoryResponse,
 )
 from modules.dispatcher.services import DispatcherService
 
@@ -94,6 +95,22 @@ async def get_dashboard_summary(
     current_user=Depends(require_dispatcher_user),
 ):
     return await service.get_dashboard_summary(user_id=current_user.get("id"))
+
+
+@router.get("/inventory", response_model=DispatcherWarehouseInventoryResponse)
+async def get_dispatcher_inventory(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_warehouse_inventory(
+        user_id=current_user.get("id"),
+        page=page,
+        page_size=page_size,
+        search=search,
+    )
 
 
 router.include_router(orders_router)

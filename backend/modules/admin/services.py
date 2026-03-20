@@ -545,7 +545,7 @@ class AdminService:
         inventory.qty_on_hand = after_on_hand
 
         reason_prefix = payload.reason.strip() if payload.reason else ""
-        inbound_reason = f"{reason_prefix}，进了什么货" if reason_prefix else "进了什么货"
+        inbound_reason = f"{reason_prefix}：进了{payload.qty}个{product.name}" if reason_prefix else f"进了{payload.qty}个{product.name}"
 
         try:
             await self.session.flush()
@@ -1155,7 +1155,7 @@ class AdminService:
             lines = [
                 f"# Orders Export ({len(items)})",
                 "",
-                "| 订单号 | 客户 | 仓库 | 优先级 | 状态 | 责任调度员 | 创建时间 | 总件数 | 总金额(分) |",
+                "| 订单号 | 客户 | 仓库 | 优先级 | 状态 | 责任调度员 | 创建时间 | 总件数 | 总金额(元) |",
                 "|---|---|---|---|---|---|---|---:|---:|",
             ]
             for row in items:
@@ -1291,7 +1291,7 @@ class AdminService:
         ]
 
         table_rows = [
-            ["订单号", "客户", "仓库", "优先级", "状态", "责任调度员", "创建时间", "总件数", "总金额(分)"]
+            ["订单号", "客户", "仓库", "优先级", "状态", "责任调度员", "创建时间", "总件数", "总金额(元)"]
         ]
         for row in items:
             table_rows.append(
@@ -1365,7 +1365,7 @@ class AdminService:
             [Paragraph("<b>责任调度员</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["dispatcher_name"]), styles["meta"])],
             [Paragraph("<b>状态 / 优先级</b>", styles["meta"]), Paragraph(f"{self._safe_pdf_text(detail['status'])} / {self._safe_pdf_text(detail['priority'])}", styles["meta"])],
             [Paragraph("<b>创建时间</b>", styles["meta"]), Paragraph(self._safe_pdf_text(detail["created_at"]), styles["meta"])],
-            [Paragraph("<b>总件数 / 总金额(分)</b>", styles["meta"]), Paragraph(f"{self._safe_pdf_text(detail['total_items'])} / {self._safe_pdf_text(detail['total_amount'])}", styles["meta"])],
+            [Paragraph("<b>总件数 / 总金额(元)</b>", styles["meta"]), Paragraph(f"{self._safe_pdf_text(detail['total_items'])} / {self._safe_pdf_text(detail['total_amount'])}", styles["meta"])],
         ]
         meta_table = Table(meta_rows, colWidths=[120, 390])
         meta_table.setStyle(
@@ -1382,7 +1382,7 @@ class AdminService:
         )
         flowables.extend([meta_table, Spacer(1, 12), Paragraph("订单明细", styles["subtitle"]), Spacer(1, 6)])
 
-        detail_rows = [["SKU", "产品名称", "类别", "数量", "单价(分)", "小计(分)"]]
+        detail_rows = [["SKU", "产品名称", "类别", "数量", "单价(元)", "小计(元)"]]
         for item in detail["items"]:
             detail_rows.append(
                 [

@@ -39,6 +39,15 @@ async def jwt_middleware(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    if isinstance(exc.detail, dict):
+        message = str(exc.detail.get("message") or exc.detail.get("detail") or "request failed")
+        data = exc.detail.get("data")
+        if data is None:
+            data = {k: v for k, v in exc.detail.items() if k not in ("message", "detail")}
+            if not data:
+                data = None
+        return failure(message=message, code=exc.status_code, data=data)
+
     return failure(message=str(exc.detail), code=exc.status_code)
 
 

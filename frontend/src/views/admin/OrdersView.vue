@@ -93,7 +93,7 @@
           <template #default="{ row }">{{ row.dispatcher_name || '-' }}</template>
         </el-table-column>
         <el-table-column prop="total_items" label="总件数" width="100" />
-        <el-table-column prop="total_amount" label="总金额(分)" width="120" />
+        <el-table-column prop="total_amount" label="总金额(元)" width="120" />
         <el-table-column label="创建时间" min-width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
@@ -181,7 +181,7 @@
             <div class="item-header">
               <span class="col-product">产品</span>
               <span class="col-qty">数量</span>
-              <span class="col-price">单价(分)</span>
+              <span class="col-price">单价(元)</span>
             </div>
             <div v-for="(item, index) in createForm.items" :key="index" class="item-row">
               <el-select
@@ -250,8 +250,8 @@
           <el-table-column prop="product_name" label="产品名称" min-width="200" />
           <el-table-column prop="product_category" label="类别" min-width="120" />
           <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="unit_price" label="单价(分)" width="110" />
-          <el-table-column prop="subtotal" label="小计(分)" width="110" />
+          <el-table-column prop="unit_price" label="单价(元)" width="110" />
+          <el-table-column prop="subtotal" label="小计(元)" width="110" />
         </el-table>
       </el-card>
     </el-dialog>
@@ -284,7 +284,7 @@
             <div class="item-header">
               <span class="col-product">产品</span>
               <span class="col-qty">数量</span>
-              <span class="col-price">单价(分)</span>
+              <span class="col-price">单价(元)</span>
             </div>
             <div v-for="(item, index) in editForm.items" :key="index" class="item-row">
               <el-select

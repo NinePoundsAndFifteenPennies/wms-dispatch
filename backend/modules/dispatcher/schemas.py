@@ -115,3 +115,33 @@ class DispatcherDashboardSummaryResponse(BaseModel):
     my_in_progress_count: int
     my_completed_count: int
     my_cancelled_count: int
+
+
+class DispatcherWarehouseInventoryItemResponse(BaseModel):
+    id: int
+    product_id: int
+    sku: str
+    product_name: str
+    category: Optional[str] = None
+    product_cover_image: Optional[str] = None
+    product_is_active: bool
+    qty_on_hand: int
+    qty_reserved: int
+    qty_locked: int
+    qty_threshold: int
+    qty_available: int
+
+
+class DispatcherWarehouseSummaryResponse(BaseModel):
+    id: int
+    name: str
+    address: Optional[str] = None
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    is_active: bool
+
+
+class DispatcherWarehouseInventoryResponse(BaseModel):
+    warehouse: DispatcherWarehouseSummaryResponse
+    items: List[DispatcherWarehouseInventoryItemResponse]
+    total: int

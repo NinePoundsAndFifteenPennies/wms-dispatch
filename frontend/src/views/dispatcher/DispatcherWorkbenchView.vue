@@ -85,7 +85,7 @@
             <strong>{{ selectedOrder?.total_items || 0 }}</strong>
           </div>
           <div class="stat-row">
-            <span>总金额(分)</span>
+            <span>总金额(元)</span>
             <strong>{{ selectedOrder?.total_amount || 0 }}</strong>
           </div>
           <div class="stat-row">

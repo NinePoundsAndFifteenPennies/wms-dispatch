@@ -11,7 +11,7 @@
       <el-descriptions-item label="状态">{{ statusText(detail.status) }}</el-descriptions-item>
       <el-descriptions-item label="优先级">{{ priorityText(detail.priority) }}</el-descriptions-item>
       <el-descriptions-item label="总件数">{{ detail.total_items }}</el-descriptions-item>
-      <el-descriptions-item label="总金额(分)">{{ detail.total_amount }}</el-descriptions-item>
+      <el-descriptions-item label="总金额(元)">{{ detail.total_amount }}</el-descriptions-item>
     </el-descriptions>
 
     <DetailInfoBlock title="阶段进度" v-if="detail">

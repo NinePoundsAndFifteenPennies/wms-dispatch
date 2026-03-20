@@ -48,6 +48,7 @@ src/
       products.js
     dispatcher/             # 调度员域 API
       orders.js
+      inventory.js
     common/                 # 公共 API 能力
       auth.js
       http.js
@@ -91,6 +92,7 @@ src/
       DispatcherOrderDetailView.vue
       DispatcherMyOrdersView.vue
       DispatcherMyOrderDetailView.vue
+      DispatcherInventoryView.vue
       DispatcherWorkOrdersView.vue
       DispatcherTransfersView.vue
 ```
@@ -134,26 +136,5 @@ src/
 3. 跨角色复用逻辑应抽到公共层（`api/common`、通用组件或工具模块），禁止直接引用其他角色页面/模块。
 4. 提交前至少进行一次本地路由与权限流程自测（登录、刷新、越权访问、登出）。
 
-## 说明
 
-本次重构完成了以下关键调整：
 
-- `layouts/BaseLayout.vue` 重命名为 `layouts/AdminLayout.vue`
-- `views` 下所有非 dispatcher 页面迁移到 `views/admin`（登录页保留在根目录）
-- 路由从单文件改为按角色分层组织
-- API 从扁平结构改为 `admin/common` 角色域结构
-- 调度员 mock 迁移到 `modules/dispatcher/mock`
-
-## 调度员页面补充说明（新增）
-
-- 侧边导航：`接单中心`、`我的订单` 分离；“我的订单”显示实时数量。
-- 接单中心：展示 `pending_acceptance` 订单，支持搜索（订单号/客户）、优先级三列与列内排序。
-- 我的订单：展示当前调度员 `in_progress/completed/cancelled` 订单，支持搜索与优先级三列布局。
-- 详情页路由：
-  - `/dispatcher/orders/:orderId`（接单中心详情，含接单入口）
-  - `/dispatcher/my-orders/:orderId`（我的订单详情，含阶段与工单概览）
-- 工作台：仅展示进行中订单队列；订单明细价格在表格中展示；保留并标注占位区块（待后续实现）。
-- 顶部交互：
-  - 待接单/进行中徽标支持点击跳转
-  - 用户区为下拉菜单（个人中心占位 + 退出登录）
-- 系统状态：布局轮询 `/api/health`，显示后端在线/离线。
