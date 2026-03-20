@@ -36,14 +36,15 @@ from modules.admin.schemas import (
 )
 from modules.admin.services import AdminService
 from modules.admin.dependencies import get_admin_service
-from modules.auth.dependencies import get_current_user_required
+from modules.auth.dependencies import get_current_user_required, require_admin_user
 
 router = APIRouter()
-users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
-warehouses_router = APIRouter(prefix="/admin/warehouses", tags=["Admin Warehouses"])
-customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"])
-products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"])
-orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"])
+admin_only = [Depends(require_admin_user)]
+users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"], dependencies=admin_only)
+warehouses_router = APIRouter(prefix="/admin/warehouses", tags=["Admin Warehouses"], dependencies=admin_only)
+customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"], dependencies=admin_only)
+products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"], dependencies=admin_only)
+orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"], dependencies=admin_only)
 
 @users_router.get("", response_model=UserListResponse)
 async def list_users(

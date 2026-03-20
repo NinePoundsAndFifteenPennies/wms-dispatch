@@ -97,7 +97,7 @@ export function getDefaultPathByRole(role) {
     return '/users'
   }
   if (role === 'dispatcher') {
-    return '/orders'
+    return '/dispatcher'
   }
   return '/work-orders'
 }

@@ -10,15 +10,15 @@
       </div>
 
       <el-menu class="nav-menu" :default-active="activePath" router>
-        <el-menu-item index="/">
+        <el-menu-item v-if="authStore.hasRole('admin', 'worker')" index="/">
           <el-icon class="menu-icon"><House /></el-icon>
           控制台总览
         </el-menu-item>
-        <el-menu-item index="/orders">
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/orders">
           <el-icon class="menu-icon"><Tickets /></el-icon>
           订单中枢
         </el-menu-item>
-        <el-menu-item index="/work-orders">
+        <el-menu-item v-if="authStore.hasRole('admin', 'worker')" index="/work-orders">
           <el-icon class="menu-icon"><List /></el-icon>
           工单执行
         </el-menu-item>

@@ -82,6 +82,12 @@ async def get_current_user_required(current_user=Depends(get_current_user)):
     return current_user
 
 
+async def require_admin_user(current_user=Depends(get_current_user_required)):
+    if current_user['role'] != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied')
+    return current_user
+
+
 def require_role(required_role: str):
     def decorator(func):
         signature = inspect.signature(func)

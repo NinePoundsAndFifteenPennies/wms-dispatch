@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BaseLayout from '../layouts/BaseLayout.vue'
+import DispatcherLayout from '../layouts/DispatcherLayout.vue'
 import DashboardView from '../views/DashboardView.vue'
 import OrdersView from '../views/OrdersView.vue'
 import WorkOrdersView from '../views/WorkOrdersView.vue'
@@ -9,6 +10,10 @@ import CustomersView from '../views/CustomersView.vue'
 import ProductsView from '../views/ProductsView.vue'
 import WarehousesView from '../views/WarehousesView.vue'
 import WarehouseInventoryView from '../views/WarehouseInventoryView.vue'
+import DispatcherWorkbenchView from '../views/dispatcher/DispatcherWorkbenchView.vue'
+import DispatcherOrdersView from '../views/dispatcher/DispatcherOrdersView.vue'
+import DispatcherWorkOrdersView from '../views/dispatcher/DispatcherWorkOrdersView.vue'
+import DispatcherTransfersView from '../views/dispatcher/DispatcherTransfersView.vue'
 import { useAuthStore, getDefaultPathByRole, isTokenExpired } from '../stores/auth'
 import { authApi } from '../api/auth'
 
@@ -32,19 +37,19 @@ const routes = [
         path: '',
         name: 'dashboard',
         component: DashboardView,
-        meta: { roles: ['admin', 'dispatcher', 'worker'] },
+        meta: { roles: ['admin', 'worker'] },
       },
       {
         path: 'orders',
         name: 'orders',
         component: OrdersView,
-        meta: { roles: ['admin', 'dispatcher'] },
+        meta: { roles: ['admin'] },
       },
       {
         path: 'work-orders',
         name: 'work-orders',
         component: WorkOrdersView,
-        meta: { roles: ['admin', 'dispatcher', 'worker'] },
+        meta: { roles: ['admin', 'worker'] },
       },
       {
         path: 'users',
@@ -75,6 +80,36 @@ const routes = [
         name: 'products',
         component: ProductsView,
         meta: { roles: ['admin'] },
+      },
+    ],
+  },
+  {
+    path: '/dispatcher',
+    component: DispatcherLayout,
+    children: [
+      {
+        path: '',
+        name: 'dispatcher-workbench',
+        component: DispatcherWorkbenchView,
+        meta: { roles: ['dispatcher'], title: '工作台' },
+      },
+      {
+        path: 'orders',
+        name: 'dispatcher-orders',
+        component: DispatcherOrdersView,
+        meta: { roles: ['dispatcher'], title: '订单中心' },
+      },
+      {
+        path: 'work-orders',
+        name: 'dispatcher-work-orders',
+        component: DispatcherWorkOrdersView,
+        meta: { roles: ['dispatcher'], title: '工单中心' },
+      },
+      {
+        path: 'transfers',
+        name: 'dispatcher-transfers',
+        component: DispatcherTransfersView,
+        meta: { roles: ['dispatcher'], title: '调拨请求' },
       },
     ],
   },
