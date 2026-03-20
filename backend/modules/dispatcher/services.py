@@ -92,6 +92,51 @@ class DispatcherService:
         items = [dict(row) for row in rows.mappings().all()]
         return {"items": items, "total": total}
 
+    async def get_dashboard_summary(self, user_id: int):
+        user_result = await self.session.execute(
+            text(
+                """
+                SELECT u.id, u.warehouse_id, w.name AS warehouse_name
+                FROM users u
+                LEFT JOIN warehouses w ON w.id = u.warehouse_id
+                WHERE u.id = :user_id
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+        user = user_result.mappings().first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        stats_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    COALESCE(COUNT(*) FILTER (WHERE o.status = 'pending_acceptance'), 0)::INTEGER AS pending_count,
+                    COALESCE(COUNT(*) FILTER (
+                        WHERE o.dispatcher_id = :user_id
+                          AND o.status IN ('in_progress', 'completed', 'cancelled')
+                    ), 0)::INTEGER AS my_orders_count,
+                    COALESCE(COUNT(*) FILTER (WHERE o.dispatcher_id = :user_id AND o.status = 'in_progress'), 0)::INTEGER AS my_in_progress_count,
+                    COALESCE(COUNT(*) FILTER (WHERE o.dispatcher_id = :user_id AND o.status = 'completed'), 0)::INTEGER AS my_completed_count,
+                    COALESCE(COUNT(*) FILTER (WHERE o.dispatcher_id = :user_id AND o.status = 'cancelled'), 0)::INTEGER AS my_cancelled_count
+                FROM orders o
+                """
+            ),
+            {"user_id": user_id},
+        )
+        stats = dict(stats_result.mappings().first() or {})
+        return {
+            "warehouse_id": user["warehouse_id"],
+            "warehouse_name": user["warehouse_name"],
+            "pending_count": stats.get("pending_count", 0),
+            "my_orders_count": stats.get("my_orders_count", 0),
+            "my_in_progress_count": stats.get("my_in_progress_count", 0),
+            "my_completed_count": stats.get("my_completed_count", 0),
+            "my_cancelled_count": stats.get("my_cancelled_count", 0),
+        }
+
     async def get_order_detail(self, order_id: int, user_id: int, for_my_orders: bool = False):
         where_sql, params = self._build_order_filters(
             user_id=user_id,

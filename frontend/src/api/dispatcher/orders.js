@@ -20,4 +20,8 @@ export const dispatcherOrdersApi = {
   getMyOrderDetail(orderId) {
     return http.get(`/dispatcher/my-orders/${orderId}`)
   },
+
+  getDashboardSummary() {
+    return http.get('/dispatcher/dashboard-summary')
+  },
 }

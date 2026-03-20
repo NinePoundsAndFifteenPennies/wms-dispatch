@@ -105,3 +105,13 @@ class DispatcherOrderDetailResponse(BaseModel):
     items: List[DispatcherOrderDetailItemResponse]
     stages: List[DispatcherOrderStageResponse]
     work_order_summary: DispatcherOrderWorkOrderSummaryResponse
+
+
+class DispatcherDashboardSummaryResponse(BaseModel):
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
+    pending_count: int
+    my_orders_count: int
+    my_in_progress_count: int
+    my_completed_count: int
+    my_cancelled_count: int

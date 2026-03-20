@@ -47,11 +47,19 @@ function formatDate(value) {
 
 <style scoped>
 .order-card {
-  border: 1px solid var(--dispatcher-border);
-  border-radius: 12px;
-  padding: 10px;
-  background: #fffdf9;
+  border: 1px solid #d9cfbe;
+  border-radius: 14px;
+  padding: 12px;
+  background: linear-gradient(155deg, #fffdf9 0%, #f8f3ea 100%);
   cursor: pointer;
+  box-shadow: 0 6px 18px rgba(91, 75, 51, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.order-card:hover {
+  transform: translateY(-2px);
+  border-color: #bfa781;
+  box-shadow: 0 10px 22px rgba(91, 75, 51, 0.16);
 }
 
 .card-head {
@@ -63,17 +71,27 @@ function formatDate(value) {
 .customer,
 .meta,
 .time {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 12px;
+}
+
+.customer {
+  font-size: 13px;
+  color: #2b2721;
 }
 
 .meta {
   display: flex;
   justify-content: space-between;
+  color: #6f675a;
 }
 
 .status {
-  color: var(--dispatcher-muted);
+  color: #8f6d42;
+  font-weight: 600;
+  background: #f7ead6;
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .time {

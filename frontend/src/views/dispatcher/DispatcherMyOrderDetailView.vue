@@ -7,6 +7,7 @@
     <el-descriptions v-if="detail" :column="3" border>
       <el-descriptions-item label="订单号">{{ detail.order_no }}</el-descriptions-item>
       <el-descriptions-item label="客户">{{ detail.customer_name }}</el-descriptions-item>
+      <el-descriptions-item label="客户联系方式">{{ detail.customer_contact || '-' }}</el-descriptions-item>
       <el-descriptions-item label="状态">{{ statusText(detail.status) }}</el-descriptions-item>
       <el-descriptions-item label="优先级">{{ priorityText(detail.priority) }}</el-descriptions-item>
       <el-descriptions-item label="总件数">{{ detail.total_items }}</el-descriptions-item>
@@ -87,6 +88,7 @@ onMounted(fetchDetail)
 .detail-page {
   display: grid;
   gap: 12px;
+  background: transparent;
 }
 
 .page-head {
@@ -96,5 +98,19 @@ onMounted(fetchDetail)
 
 .summary-text {
   margin: 0;
+}
+
+:deep(.el-descriptions__label) {
+  color: #5b4d3d;
+  font-weight: 600;
+}
+
+:deep(.el-descriptions__content) {
+  color: #2b2721;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: #f5ece0;
+  color: #6a5338;
 }
 </style>

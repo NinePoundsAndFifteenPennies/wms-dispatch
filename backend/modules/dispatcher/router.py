@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from modules.auth.dependencies import get_current_user_required
 from modules.dispatcher.dependencies import get_dispatcher_service
-from modules.dispatcher.schemas import DispatcherOrderDetailResponse, DispatcherOrderListResponse
+from modules.dispatcher.schemas import (
+    DispatcherDashboardSummaryResponse,
+    DispatcherOrderDetailResponse,
+    DispatcherOrderListResponse,
+)
 from modules.dispatcher.services import DispatcherService
 
 
@@ -82,6 +86,14 @@ async def get_my_order_detail(
         user_id=current_user.get("id"),
         for_my_orders=True,
     )
+
+
+@router.get("/dashboard-summary", response_model=DispatcherDashboardSummaryResponse)
+async def get_dashboard_summary(
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_dashboard_summary(user_id=current_user.get("id"))
 
 
 router.include_router(orders_router)

@@ -5,7 +5,7 @@
         <div class="brand-mark">WD</div>
         <div>
           <p class="brand-title">Dispatcher Desk</p>
-          <p class="brand-subtitle">{{ shellSummary.title }}</p>
+          <p class="brand-subtitle">{{ warehouseTitle }}</p>
         </div>
       </div>
 
@@ -18,13 +18,13 @@
           :class="{ active: activePath === item.path }"
         >
           <span>{{ item.label }}</span>
-          <span v-if="item.count" class="nav-pill">{{ item.count }}</span>
+          <span v-if="item.count !== undefined" class="nav-pill">{{ item.count }}</span>
         </router-link>
       </nav>
 
       <section class="sidebar-note">
-        <p class="sidebar-note-label">{{ shellSummary.sidebarFootnote.label }}</p>
-        <p class="sidebar-note-value">{{ shellSummary.sidebarFootnote.value }}</p>
+        <p class="sidebar-note-label">系统状态</p>
+        <p class="sidebar-note-value" :class="statusClass">{{ backendStatusText }}</p>
       </section>
     </aside>
 
@@ -38,7 +38,7 @@
         <div class="topbar-actions">
           <div class="badge-group">
             <span
-              v-for="badge in shellSummary.statusBadges"
+              v-for="badge in dispatcherStore.statusBadges"
               :key="badge.key"
               class="status-badge"
               :class="`tone-${badge.tone}`"
@@ -48,10 +48,10 @@
           </div>
 
           <button type="button" class="profile-chip" @click="logout">
-            <span class="profile-avatar">{{ shellSummary.profile.name.slice(0, 1) }}</span>
+            <span class="profile-avatar">{{ profileName.slice(0, 1) }}</span>
             <span>
-              <strong>{{ shellSummary.profile.name }}</strong>
-              <small>{{ shellSummary.profile.role }} / {{ shellSummary.profile.warehouse }}</small>
+              <strong>{{ profileName }}</strong>
+              <small>调度员 / {{ warehouseTitle }}</small>
             </span>
           </button>
         </div>
@@ -65,30 +65,83 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import http from '../api/common/http'
 import { useAuthStore } from '../stores/auth'
-import { dispatcherShellSummary } from '../modules/dispatcher/mock/dispatcher'
+import { useDispatcherStore } from '../stores/dispatcher'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const dispatcherStore = useDispatcherStore()
 
-const shellSummary = dispatcherShellSummary
-const navItems = [
-  { path: '/dispatcher', label: '工作台' },
-  { path: '/dispatcher/orders', label: '接单中心' },
-  { path: '/dispatcher/my-orders', label: '我的订单' },
-  { path: '/dispatcher/work-orders', label: '工单中心', count: '05' },
-  { path: '/dispatcher/transfers', label: '调拨请求', count: '04' },
-]
+const HEALTH_CHECK_INTERVAL = 10000
+const HEALTH_CHECK_OFFLINE_INTERVAL = 30000
+const backendStatus = ref('checking')
+let statusTimer = null
 
 const activePath = computed(() => route.path)
+const warehouseTitle = computed(() => dispatcherStore.summary.warehouse_name || '仓库未绑定')
+const profileName = computed(() => authStore.currentUser?.username || '未知用户')
+
+const backendStatusText = computed(() => {
+  if (backendStatus.value === 'online') return '后端在线'
+  if (backendStatus.value === 'offline') return '后端离线 · 无法访问'
+  return '状态检测中...'
+})
+
+const statusClass = computed(() =>
+  backendStatus.value === 'online' ? 'status-online' : backendStatus.value === 'offline' ? 'status-offline' : ''
+)
+
+const navItems = computed(() => [
+  { path: '/dispatcher', label: '工作台' },
+  { path: '/dispatcher/orders', label: '接单中心', count: dispatcherStore.summary.pending_count },
+  { path: '/dispatcher/my-orders', label: '我的订单', count: dispatcherStore.summary.my_orders_count },
+  { path: '/dispatcher/work-orders', label: '工单中心' },
+  { path: '/dispatcher/transfers', label: '调拨请求' },
+])
 
 function logout() {
   authStore.clearToken()
   router.push('/login')
 }
+
+async function checkBackendStatus() {
+  try {
+    const response = await http.get('/health')
+    backendStatus.value = response.data?.data?.status === 'ok' ? 'online' : 'offline'
+  } catch {
+    backendStatus.value = 'offline'
+  } finally {
+    scheduleNextHealthCheck()
+  }
+}
+
+function scheduleNextHealthCheck() {
+  if (statusTimer) window.clearTimeout(statusTimer)
+  statusTimer = window.setTimeout(
+    checkBackendStatus,
+    backendStatus.value === 'offline' ? HEALTH_CHECK_OFFLINE_INTERVAL : HEALTH_CHECK_INTERVAL
+  )
+}
+
+onMounted(async () => {
+  await dispatcherStore.refreshSummary()
+  checkBackendStatus()
+})
+
+watch(
+  () => route.path,
+  () => {
+    dispatcherStore.refreshSummary().catch(() => {})
+  }
+)
+
+onUnmounted(() => {
+  if (statusTimer) window.clearTimeout(statusTimer)
+})
 </script>
 
 <style scoped>
@@ -101,15 +154,15 @@ function logout() {
   --dispatcher-text: #26221c;
   --dispatcher-muted: #6f675a;
   --dispatcher-soft: #8e8578;
-  --dispatcher-pending-bg: #f7ead6;
-  --dispatcher-pending-text: #7a4a16;
-  --dispatcher-active-bg: #e7eef7;
-  --dispatcher-active-text: #1e4f85;
-  --dispatcher-alert-bg: #f8e4e2;
-  --dispatcher-alert-text: #922f2f;
+  --dispatcher-pending-bg: #fbe9cf;
+  --dispatcher-pending-text: #9a5b18;
+  --dispatcher-active-bg: #e2eefc;
+  --dispatcher-active-text: #1f5c9a;
+  --dispatcher-done-bg: #e2f5e8;
+  --dispatcher-done-text: #2c7a4b;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   background:
     radial-gradient(circle at 0 0, rgba(178, 150, 96, 0.08) 0%, transparent 18%),
     linear-gradient(180deg, #f6f3ec 0%, #ede8de 100%);
@@ -123,7 +176,6 @@ function logout() {
   padding: 18px 14px;
   border-right: 1px solid var(--dispatcher-border);
   background: rgba(250, 247, 241, 0.92);
-  backdrop-filter: blur(12px);
 }
 
 .brand-block {
@@ -174,7 +226,6 @@ function logout() {
   border-radius: 10px;
   color: var(--dispatcher-muted);
   text-decoration: none;
-  transition: all 0.2s ease;
 }
 
 .nav-link:hover {
@@ -187,7 +238,6 @@ function logout() {
   border-color: var(--dispatcher-border-strong);
   color: var(--dispatcher-text);
   font-weight: 700;
-  box-shadow: 0 10px 24px rgba(59, 52, 43, 0.08);
 }
 
 .nav-pill {
@@ -223,8 +273,15 @@ function logout() {
 .sidebar-note-value {
   margin-top: 8px;
   font-size: 12px;
-  line-height: 1.6;
   color: var(--dispatcher-muted);
+}
+
+.status-online {
+  color: #2c7a4b;
+}
+
+.status-offline {
+  color: #a0473f;
 }
 
 .dispatcher-main {
@@ -241,7 +298,6 @@ function logout() {
   padding: 14px 18px;
   border-bottom: 1px solid var(--dispatcher-border);
   background: rgba(247, 244, 238, 0.9);
-  backdrop-filter: blur(10px);
 }
 
 .topbar-kicker,
@@ -265,8 +321,6 @@ function logout() {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .badge-group {
@@ -292,9 +346,9 @@ function logout() {
   color: var(--dispatcher-active-text);
 }
 
-.tone-alert {
-  background: var(--dispatcher-alert-bg);
-  color: var(--dispatcher-alert-text);
+.tone-done {
+  background: var(--dispatcher-done-bg);
+  color: var(--dispatcher-done-text);
 }
 
 .profile-chip {
@@ -340,34 +394,6 @@ function logout() {
 @media (max-width: 980px) {
   .dispatcher-shell {
     grid-template-columns: 1fr;
-  }
-
-  .dispatcher-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--dispatcher-border);
-  }
-
-  .dispatcher-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .sidebar-note {
-    margin-top: 0;
-  }
-}
-
-@media (max-width: 720px) {
-  .dispatcher-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dispatcher-topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .dispatcher-content {
-    padding: 14px;
   }
 }
 </style>
