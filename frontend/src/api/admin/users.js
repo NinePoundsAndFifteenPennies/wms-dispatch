@@ -1,6 +1,6 @@
-import http from './http'
+import http from '../common/http'
 
-export const adminApi = {
+export const usersApi = {
   getUsers(params) {
     return http.get('/admin/users', { params })
   },

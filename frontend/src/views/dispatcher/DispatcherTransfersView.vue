@@ -47,7 +47,7 @@
 </template>
 
 <script setup>
-import { dispatcherTransfersMock } from '../../mock/dispatcher'
+import { dispatcherTransfersMock } from '../../modules/dispatcher/mock/dispatcher'
 
 function statusClass(status) {
   return {

@@ -150,7 +150,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { dispatcherWorkbenchMock } from '../../mock/dispatcher'
+import { dispatcherWorkbenchMock } from '../../modules/dispatcher/mock/dispatcher'
 
 const workbench = dispatcherWorkbenchMock
 const selectedOrderId = ref(workbench.orderQueue[0].id)

@@ -68,7 +68,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { dispatcherShellSummary } from '../mock/dispatcher'
+import { dispatcherShellSummary } from '../modules/dispatcher/mock/dispatcher'
 
 const route = useRoute()
 const router = useRouter()

@@ -1,4 +1,4 @@
-import http from './http'
+import http from '../common/http'
 
 export const productsApi = {
   getProducts(params) {

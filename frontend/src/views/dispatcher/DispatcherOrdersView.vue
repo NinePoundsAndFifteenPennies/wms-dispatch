@@ -73,7 +73,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { dispatcherOrdersMock } from '../../mock/dispatcher'
+import { dispatcherOrdersMock } from '../../modules/dispatcher/mock/dispatcher'
 
 const statusOptions = ['全部', '待接单', '进行中', '告警处理中', '已完成']
 const priorityOptions = ['全部', '高', '中', '低']

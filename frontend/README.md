@@ -1,82 +1,138 @@
 ﻿# WMS Dispatch Frontend
 
-WMS Dispatch Frontend is a modern Vue 3 application built with Vite for managing and dispatching warehouse operations, including orders, inventory, and cross-warehouse coordination.
+WMS Dispatch 前端基于 Vue 3 + Vite，面向仓储调度场景。当前代码结构已按角色职责重构，重点保障管理员与调度员业务解耦，避免跨角色直接依赖。
 
-## 🚀 Tech Stack
+## 技术栈
 
-- **Framework**: Vue 3 (Composition API, <script setup>)
-- **Build Tool**: Vite
-- **Routing**: Vue Router 4
-- **State Management**: Pinia
-- **UI Library**: Element Plus
-- **HTTP Client**: Axios (with centralized uthApi abstraction and interceptors)
+- Vue 3（Composition API + `<script setup>`）
+- Vite
+- Vue Router 4
+- Pinia
+- Element Plus
+- Axios
 
-## 📁 Project Structure
+## 启动与构建
 
-`	ext
-src/
-  ├── api/              # API request abstractions (e.g., authApi) and Axios instance
-  ├── assets/           # Static assets (images, logos, etc.)
-  ├── layouts/          # Page layouts (e.g., BaseLayout with Sidebar and Header)
-  ├── router/           # Application routing and navigation guards (auth requirements, token checking)
-  ├── stores/           # Pinia stores (auth store, JWT handling)
-  ├── views/            # Main page views
-  │   ├── LoginView.vue        # Login page with glassmorphism UI
-  │   ├── DashboardView.vue    # Dashboard summary
-  │   ├── OrdersView.vue       # Order management
-  │   ├── WorkOrdersView.vue   # Dispatching work orders
-  │   └── UsersView.vue        # User & permissions management
-  ├── App.vue           # Root component
-  ├── main.js           # App entry point (mounting Vue, Pinia, Router, Element Plus)
-  └── style.css         # Global CSS variables and base styles
-`
-
-## ⚙️ Prerequisites
-
-- Node.js 18+
-- npm 9+
-
-## 🛠️ Quick Start
-
-`ash
-# Install dependencies
+```bash
+# 安装依赖
 npm install
 
-# Start development server
+# 启动开发环境
 npm run dev
-`
 
-Default development address: http://localhost:5173
-
-## 🔗 Backend Integration
-
-The backend service runs on http://localhost:8000.
-
-In the development environment, Vite automatically proxies /api requests to the local backend.
-
-- Frontend makes a request to: /api/...
-- Real request targeted to: http://localhost:8000/api/...
-
-If you need to connect to a different backend server URL, you can configure the environment variable:
-VITE_API_BASE_URL in .env.
-
-## 📦 Building for Production
-
-`ash
-# Build production bundle
+# 生产构建
 npm run build
 
-# Preview production build locally
+# 本地预览构建结果
 npm run preview
-`
+```
 
-## 📝 Coding Standards
+默认开发地址：`http://localhost:5173`
 
-### Axios & APIs
-- Service requests should be maintained within the src/api folder rather than firing them straight from components.
-- The http.js global interceptor handles attaching the JWT session token (Authorization: Bearer <token>).
-- Expired or invalid tokens are handled gracefully by outer/index.js interceptors redirecting safely back to /login.
+## 环境变量
 
-### Pinia State
-- src/stores/auth.js maintains the authentication context.
-- Provides getters to evaluate required permissions using hasRole().
+- `VITE_API_BASE_URL`
+
+默认值为 `/api`，通过 Vite 代理转发到后端服务。
+
+## 目录结构（重构后）
+
+```text
+src/
+  api/
+    admin/                  # 管理员域 API
+      users.js
+      orders.js
+      warehouses.js
+      customers.js
+      products.js
+    common/                 # 公共 API 能力
+      auth.js
+      http.js
+
+  layouts/
+    AdminLayout.vue         # 管理员（含 worker）布局
+    DispatcherLayout.vue    # 调度员布局
+
+  modules/
+    dispatcher/
+      mock/
+        dispatcher.js       # 调度员域 mock 数据
+
+  router/
+    guards/
+      authGuard.js          # 统一鉴权守卫
+    routes/
+      public.js             # 公共路由（登录）
+      admin.js              # 管理员域路由
+      dispatcher.js         # 调度员域路由
+    index.js
+
+  stores/
+    auth.js
+
+  views/
+    LoginView.vue           # 登录页（公共）
+    admin/                  # 非 dispatcher 页面全部归档到 admin
+      DashboardView.vue
+      OrdersView.vue
+      WorkOrdersView.vue
+      UsersView.vue
+      WarehousesView.vue
+      WarehouseInventoryView.vue
+      CustomersView.vue
+      ProductsView.vue
+    dispatcher/
+      DispatcherWorkbenchView.vue
+      DispatcherOrdersView.vue
+      DispatcherWorkOrdersView.vue
+      DispatcherTransfersView.vue
+```
+
+## 角色解耦规范
+
+1. 不同角色业务页面必须物理隔离。
+- 管理员页面只能放在 `views/admin`。
+- 调度员页面只能放在 `views/dispatcher`。
+- 公共页面（如登录）放在 `views` 根目录。
+
+2. 路由按角色拆分，不在单文件混写。
+- 管理员：`router/routes/admin.js`
+- 调度员：`router/routes/dispatcher.js`
+- 公共：`router/routes/public.js`
+
+3. API 按角色域组织。
+- 管理员接口在 `api/admin/*`
+- 公共鉴权与请求基座在 `api/common/*`
+
+4. 角色域内 mock/配置不得污染全局。
+- 调度员 mock 统一放在 `modules/dispatcher/mock`。
+
+## 命名规范
+
+- 布局组件使用明确角色前缀：`AdminLayout`、`DispatcherLayout`。
+- 路由文件以角色命名：`admin.js`、`dispatcher.js`、`public.js`。
+- 视图文件在角色目录中保持业务语义命名（如 `OrdersView.vue`）。
+
+## 权限与跳转
+
+- 全局鉴权守卫：`router/guards/authGuard.js`
+- 登录后默认跳转规则：`stores/auth.js` 中 `getDefaultPathByRole()`
+- 未登录访问受保护路由会跳转到 `/login`
+
+## 开发约定
+
+1. 新增页面前先确认角色归属，再创建到对应角色目录。
+2. 新增接口前先确认角色归属，再创建到对应 `api` 子目录。
+3. 跨角色复用逻辑应抽到公共层（`api/common`、通用组件或工具模块），禁止直接引用其他角色页面/模块。
+4. 提交前至少进行一次本地路由与权限流程自测（登录、刷新、越权访问、登出）。
+
+## 说明
+
+本次重构完成了以下关键调整：
+
+- `layouts/BaseLayout.vue` 重命名为 `layouts/AdminLayout.vue`
+- `views` 下所有非 dispatcher 页面迁移到 `views/admin`（登录页保留在根目录）
+- 路由从单文件改为按角色分层组织
+- API 从扁平结构改为 `admin/common` 角色域结构
+- 调度员 mock 迁移到 `modules/dispatcher/mock`

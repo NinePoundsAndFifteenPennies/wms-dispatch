@@ -94,7 +94,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, User, UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
-import http from '../api/http'
+import http from '../api/common/http'
 
 const route = useRoute()
 const router = useRouter()

@@ -118,7 +118,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
-import { customersApi } from '../api/customers'
+import { customersApi } from '../../api/admin/customers'
 
 const customers = ref([])
 const loading = ref(false)

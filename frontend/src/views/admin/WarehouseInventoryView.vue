@@ -173,8 +173,8 @@ import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Search } from '@element-plus/icons-vue'
-import { warehousesApi } from '../api/warehouses'
-import { productsApi } from '../api/products'
+import { warehousesApi } from '../../api/admin/warehouses'
+import { productsApi } from '../../api/admin/products'
 
 const route = useRoute()
 const router = useRouter()

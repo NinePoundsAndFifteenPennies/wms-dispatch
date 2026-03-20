@@ -345,9 +345,9 @@
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus } from '@element-plus/icons-vue'
-import { customersApi } from '../api/customers'
-import { ordersApi } from '../api/orders'
-import { productsApi } from '../api/products'
+import { customersApi } from '../../api/admin/customers'
+import { ordersApi } from '../../api/admin/orders'
+import { productsApi } from '../../api/admin/products'
 
 const orders = ref([])
 const total = ref(0)

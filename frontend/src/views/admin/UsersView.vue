@@ -195,8 +195,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, UserFilled } from '@element-plus/icons-vue'
-import { adminApi } from '../api/admin'
-import { useAuthStore } from '../stores/auth'
+import { usersApi } from '../../api/admin/users'
+import { useAuthStore } from '../../stores/auth'
 
 const authStore = useAuthStore()
 const users = ref([])
@@ -310,7 +310,7 @@ async function fetchUsers() {
       page_size: pageSize.value,
       search: searchQuery.value || undefined
     }
-    const res = await adminApi.getUsers(params)
+    const res = await usersApi.getUsers(params)
     users.value = res.data.items || []
     total.value = res.data.total || 0
   } catch (error) {
@@ -337,7 +337,7 @@ function handleCurrentChange(val) {
 
 async function fetchWarehouses() {
   try {
-    const res = await adminApi.getWarehouses()
+    const res = await usersApi.getWarehouses()
     warehouses.value = res.data || []
   } catch (error) {
     ElMessage.error('获取仓库列表失败')
@@ -416,7 +416,7 @@ async function saveDetail() {
       skill_staging: detailForm.role === 'worker' ? detailForm.skill_staging : 0,
       skill_shipping: detailForm.role === 'worker' ? detailForm.skill_shipping : 0,
     }
-    await adminApi.updateUser(detailEditingId.value, payload)
+    await usersApi.updateUser(detailEditingId.value, payload)
     ElMessage.success('详情保存成功')
     detailVisible.value = false
     fetchUsers()
@@ -429,7 +429,7 @@ async function saveDetail() {
 
 async function onStatusChange(row, targetStatus) {
   try {
-    await adminApi.updateUserStatus(row.id, targetStatus)
+    await usersApi.updateUserStatus(row.id, targetStatus)
     ElMessage.success('状态更新成功')
   } catch (error) {
     row.is_active = !targetStatus
@@ -441,7 +441,7 @@ async function handleBatchDisable() {
   await ElMessageBox.confirm(`确认禁用选中的 ${selectedIds.value.length} 个用户吗？`, '提示', {
     type: 'warning',
   })
-  await adminApi.batchDisableUsers(selectedIds.value)
+  await usersApi.batchDisableUsers(selectedIds.value)
   ElMessage.success('批量禁用成功')
   selectedIds.value = []
   fetchUsers()
@@ -465,10 +465,10 @@ async function saveUser() {
 
     if (dialogMode.value === 'create') {
       payload.password = form.password
-      await adminApi.createUser(payload)
+      await usersApi.createUser(payload)
       ElMessage.success('新增成功')
     } else {
-      await adminApi.updateUser(editingId.value, payload)
+      await usersApi.updateUser(editingId.value, payload)
       ElMessage.success('更新成功')
     }
     

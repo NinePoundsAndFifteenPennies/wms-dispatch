@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-import { dispatcherWorkOrdersMock } from '../../mock/dispatcher'
+import { dispatcherWorkOrdersMock } from '../../modules/dispatcher/mock/dispatcher'
 
 const columns = [
   { key: 'pending', label: '待处理', matcher: (item) => item.status === '待处理' },

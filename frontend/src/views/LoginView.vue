@@ -73,7 +73,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Monitor, Tickets, User, Lock } from '@element-plus/icons-vue'
 import { useAuthStore, getDefaultPathByRole } from '../stores/auth'
-import { authApi } from '../api/auth'
+import { authApi } from '../api/common/auth'
 
 const form = reactive({
   username: '',
