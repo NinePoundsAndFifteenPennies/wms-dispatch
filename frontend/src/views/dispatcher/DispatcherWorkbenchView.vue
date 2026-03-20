@@ -100,9 +100,12 @@ const selectedOrder = computed(() => {
   return detailMap.value[selectedOrderId.value] || null
 })
 
-const focusTitle = computed(() => `待接单 ${queueOrders.value.filter((o) => o.status === 'pending_acceptance').length} 单`)
+const pendingQueueCount = computed(() => queueOrders.value.filter((o) => o.status === 'pending_acceptance').length)
+const inProgressQueueCount = computed(() => queueOrders.value.filter((o) => o.status === 'in_progress').length)
+
+const focusTitle = computed(() => `待接单 ${pendingQueueCount.value} 单`)
 const focusDescription = computed(
-  () => `进行中 ${queueOrders.value.filter((o) => o.status === 'in_progress').length} 单，请优先处理高优先级订单。`
+  () => `进行中 ${inProgressQueueCount.value} 单，请优先处理高优先级订单。`
 )
 
 async function fetchWorkbench() {
@@ -112,7 +115,12 @@ async function fetchWorkbench() {
       dispatcherOrdersApi.getPendingOrders(),
       dispatcherOrdersApi.getMyOrders(),
     ])
-    queueOrders.value = [...(myRes.data.items || []), ...(pendingRes.data.items || [])]
+    const merged = [...(myRes.data.items || []), ...(pendingRes.data.items || [])]
+    const deduped = new Map()
+    for (const item of merged) {
+      deduped.set(item.id, item)
+    }
+    queueOrders.value = [...deduped.values()]
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
       .slice(0, 8)
 

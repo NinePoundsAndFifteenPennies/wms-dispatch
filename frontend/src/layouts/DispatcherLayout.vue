@@ -76,8 +76,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 const dispatcherStore = useDispatcherStore()
 
-const HEALTH_CHECK_INTERVAL = 10000
-const HEALTH_CHECK_OFFLINE_INTERVAL = 30000
+const HEALTH_CHECK_INTERVAL_MS = 10000
+const HEALTH_CHECK_OFFLINE_INTERVAL_MS = 30000
 const backendStatus = ref('checking')
 let statusTimer = null
 
@@ -120,10 +120,10 @@ async function checkBackendStatus() {
 }
 
 function scheduleNextHealthCheck() {
-  if (statusTimer) window.clearTimeout(statusTimer)
-  statusTimer = window.setTimeout(
+  if (statusTimer) clearTimeout(statusTimer)
+  statusTimer = setTimeout(
     checkBackendStatus,
-    backendStatus.value === 'offline' ? HEALTH_CHECK_OFFLINE_INTERVAL : HEALTH_CHECK_INTERVAL
+    backendStatus.value === 'offline' ? HEALTH_CHECK_OFFLINE_INTERVAL_MS : HEALTH_CHECK_INTERVAL_MS
   )
 }
 
@@ -140,7 +140,7 @@ watch(
 )
 
 onUnmounted(() => {
-  if (statusTimer) window.clearTimeout(statusTimer)
+  if (statusTimer) clearTimeout(statusTimer)
 })
 </script>
 
