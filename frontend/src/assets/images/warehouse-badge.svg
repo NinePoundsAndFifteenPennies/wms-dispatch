@@ -1,0 +1,17 @@
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="warehouse badge">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3A332B"/>
+      <stop offset="100%" stop-color="#6E5A41"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F0E0C8"/>
+      <stop offset="100%" stop-color="#D2BA98"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#g1)"/>
+  <rect x="12" y="22" width="56" height="42" rx="6" fill="url(#g2)"/>
+  <path d="M18 30L40 16L62 30V36H18V30Z" fill="#F9F1E3"/>
+  <rect x="24" y="40" width="12" height="16" rx="2" fill="#7E6548"/>
+  <rect x="44" y="40" width="12" height="16" rx="2" fill="#7E6548"/>
+</svg>

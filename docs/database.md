@@ -238,7 +238,7 @@ resources/
 | order_id | INTEGER | FK → orders.id, NOT NULL | 所属订单 |
 | product_id | INTEGER | FK → products.id, NOT NULL | 产品ID |
 | qty | INTEGER | NOT NULL, CHECK (qty > 0) | 数量 |
-| unit_price | INTEGER | NOT NULL, CHECK (unit_price >= 0) | 单价（以分为单位，避免精度丢失）|
+| unit_price | INTEGER | NOT NULL, CHECK (unit_price >= 0) | 单价（以元为单位，避免精度丢失）|
 
 ---
 

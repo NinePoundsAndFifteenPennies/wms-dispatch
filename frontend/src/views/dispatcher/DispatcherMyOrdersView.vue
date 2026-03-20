@@ -1,7 +1,7 @@
 <template>
   <div class="dispatcher-orders-page">
     <section class="page-head">
-      <h3>接单中心</h3>
+      <h3>我的订单</h3>
       <OrderSearchBox v-model="search" />
     </section>
 
@@ -90,7 +90,7 @@ const grouped = computed(() => {
 async function fetchOrders() {
   loading.value = true
   try {
-    const res = await dispatcherOrdersApi.getPendingOrders({ search: search.value || undefined })
+    const res = await dispatcherOrdersApi.getMyOrders({ search: search.value || undefined })
     orders.value = res.data.items || []
   } finally {
     loading.value = false
@@ -98,7 +98,7 @@ async function fetchOrders() {
 }
 
 function openDetail(orderId) {
-  router.push({ name: 'dispatcher-order-detail', params: { orderId } })
+  router.push({ name: 'dispatcher-my-order-detail', params: { orderId } })
 }
 
 onMounted(fetchOrders)

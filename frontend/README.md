@@ -46,6 +46,9 @@ src/
       warehouses.js
       customers.js
       products.js
+    dispatcher/             # 调度员域 API
+      orders.js
+      inventory.js
     common/                 # 公共 API 能力
       auth.js
       http.js
@@ -70,6 +73,7 @@ src/
 
   stores/
     auth.js
+    dispatcher.js
 
   views/
     LoginView.vue           # 登录页（公共）
@@ -85,6 +89,10 @@ src/
     dispatcher/
       DispatcherWorkbenchView.vue
       DispatcherOrdersView.vue
+      DispatcherOrderDetailView.vue
+      DispatcherMyOrdersView.vue
+      DispatcherMyOrderDetailView.vue
+      DispatcherInventoryView.vue
       DispatcherWorkOrdersView.vue
       DispatcherTransfersView.vue
 ```
@@ -103,6 +111,7 @@ src/
 
 3. API 按角色域组织。
 - 管理员接口在 `api/admin/*`
+- 调度员接口在 `api/dispatcher/*`
 - 公共鉴权与请求基座在 `api/common/*`
 
 4. 角色域内 mock/配置不得污染全局。
@@ -127,12 +136,5 @@ src/
 3. 跨角色复用逻辑应抽到公共层（`api/common`、通用组件或工具模块），禁止直接引用其他角色页面/模块。
 4. 提交前至少进行一次本地路由与权限流程自测（登录、刷新、越权访问、登出）。
 
-## 说明
 
-本次重构完成了以下关键调整：
 
-- `layouts/BaseLayout.vue` 重命名为 `layouts/AdminLayout.vue`
-- `views` 下所有非 dispatcher 页面迁移到 `views/admin`（登录页保留在根目录）
-- 路由从单文件改为按角色分层组织
-- API 从扁平结构改为 `admin/common` 角色域结构
-- 调度员 mock 迁移到 `modules/dispatcher/mock`

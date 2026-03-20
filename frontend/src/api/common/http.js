@@ -20,6 +20,10 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.config?.silentError) {
+      return Promise.reject(error)
+    }
+
     const responseMessage = error.response?.data?.message
     const message = responseMessage || error.message || 'Request failed'
 
