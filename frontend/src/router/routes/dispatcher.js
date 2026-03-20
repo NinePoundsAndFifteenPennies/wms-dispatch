@@ -1,6 +1,7 @@
 import DispatcherLayout from '../../layouts/DispatcherLayout.vue'
 import DispatcherWorkbenchView from '../../views/dispatcher/DispatcherWorkbenchView.vue'
 import DispatcherOrdersView from '../../views/dispatcher/DispatcherOrdersView.vue'
+import DispatcherMyOrdersView from '../../views/dispatcher/DispatcherMyOrdersView.vue'
 import DispatcherWorkOrdersView from '../../views/dispatcher/DispatcherWorkOrdersView.vue'
 import DispatcherTransfersView from '../../views/dispatcher/DispatcherTransfersView.vue'
 
@@ -20,7 +21,13 @@ export const dispatcherRoutes = [
         path: 'orders',
         name: 'dispatcher-orders',
         component: DispatcherOrdersView,
-        meta: { roles: ['dispatcher'], title: '订单中心' },
+        meta: { roles: ['dispatcher'], title: '接单中心' },
+      },
+      {
+        path: 'my-orders',
+        name: 'dispatcher-my-orders',
+        component: DispatcherMyOrdersView,
+        meta: { roles: ['dispatcher'], title: '我的订单' },
       },
       {
         path: 'work-orders',

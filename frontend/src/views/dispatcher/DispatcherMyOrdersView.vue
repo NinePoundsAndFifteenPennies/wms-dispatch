@@ -1,7 +1,7 @@
 <template>
   <div class="dispatcher-orders-page">
     <section class="page-head">
-      <h3>接单中心</h3>
+      <h3>我的订单</h3>
       <OrderSearchBox v-model="search" />
     </section>
 
@@ -40,7 +40,7 @@
       </PriorityOrderColumn>
     </section>
 
-    <el-dialog v-model="detailVisible" title="订单详情（接单中心）" width="980px">
+    <el-dialog v-model="detailVisible" title="订单详情（我的订单）" width="980px">
       <el-descriptions v-if="detail" :column="3" border>
         <el-descriptions-item label="订单号">{{ detail.order_no }}</el-descriptions-item>
         <el-descriptions-item label="客户">{{ detail.customer_name }}</el-descriptions-item>
@@ -48,29 +48,36 @@
         <el-descriptions-item label="优先级">{{ priorityText(detail.priority) }}</el-descriptions-item>
         <el-descriptions-item label="总件数">{{ detail.total_items }}</el-descriptions-item>
         <el-descriptions-item label="总金额(分)">{{ detail.total_amount }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="3">{{ detail.description || '-' }}</el-descriptions-item>
       </el-descriptions>
 
-      <DetailInfoBlock title="订单明细" v-if="detail">
-        <el-table :data="detail.items" stripe>
-          <el-table-column prop="product_sku" label="SKU" width="130" />
-          <el-table-column prop="product_name" label="产品名称" min-width="200" />
-          <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="unit_price" label="单价(分)" width="110" />
+      <DetailInfoBlock title="阶段进度" v-if="detail">
+        <el-table :data="detail.stages || []" stripe>
+          <el-table-column prop="stage_type" label="阶段" min-width="120" />
+          <el-table-column prop="status" label="状态" min-width="120" />
+          <el-table-column label="工单概况" min-width="240">
+            <template #default="{ row }">
+              总{{ row.work_orders.total }} / 待{{ row.work_orders.pending }} / 进{{ row.work_orders.in_progress }} / 完{{
+                row.work_orders.completed
+              }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="completion_type" label="完成方式" min-width="100" />
         </el-table>
       </DetailInfoBlock>
 
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="accepting" @click="acceptCurrentOrder">接单</el-button>
-      </template>
+      <DetailInfoBlock title="工单总览" v-if="detail">
+        <p class="summary-text">
+          总数 {{ detail.work_order_summary.total }}，待处理 {{ detail.work_order_summary.pending }}，进行中
+          {{ detail.work_order_summary.in_progress }}，已完成 {{ detail.work_order_summary.completed }}，已终止
+          {{ detail.work_order_summary.terminated }}
+        </p>
+      </DetailInfoBlock>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
 import DispatcherOrderCard from '../../components/dispatcher/DispatcherOrderCard.vue'
 import PriorityOrderColumn from '../../components/dispatcher/PriorityOrderColumn.vue'
@@ -78,7 +85,6 @@ import DetailInfoBlock from '../../components/shared/DetailInfoBlock.vue'
 import OrderSearchBox from '../../components/shared/OrderSearchBox.vue'
 
 const loading = ref(false)
-const accepting = ref(false)
 const orders = ref([])
 const search = ref('')
 const detailVisible = ref(false)
@@ -117,7 +123,7 @@ const grouped = computed(() => {
 async function fetchOrders() {
   loading.value = true
   try {
-    const res = await dispatcherOrdersApi.getPendingOrders({ search: search.value || undefined })
+    const res = await dispatcherOrdersApi.getMyOrders({ search: search.value || undefined })
     orders.value = res.data.items || []
   } finally {
     loading.value = false
@@ -125,22 +131,9 @@ async function fetchOrders() {
 }
 
 async function openDetail(orderId) {
-  const res = await dispatcherOrdersApi.getPendingOrderDetail(orderId)
+  const res = await dispatcherOrdersApi.getMyOrderDetail(orderId)
   detail.value = res.data
   detailVisible.value = true
-}
-
-async function acceptCurrentOrder() {
-  if (!detail.value?.id) return
-  accepting.value = true
-  try {
-    await dispatcherOrdersApi.acceptOrder(detail.value.id)
-    ElMessage.success('接单成功')
-    detailVisible.value = false
-    await fetchOrders()
-  } finally {
-    accepting.value = false
-  }
 }
 
 function statusText(status) {
@@ -185,6 +178,10 @@ watch(search, fetchOrders)
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-text {
+  margin: 0;
 }
 
 @media (max-width: 980px) {

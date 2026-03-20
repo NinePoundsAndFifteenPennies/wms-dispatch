@@ -77,7 +77,8 @@ const authStore = useAuthStore()
 const shellSummary = dispatcherShellSummary
 const navItems = [
   { path: '/dispatcher', label: '工作台' },
-  { path: '/dispatcher/orders', label: '订单中心', count: '05' },
+  { path: '/dispatcher/orders', label: '接单中心' },
+  { path: '/dispatcher/my-orders', label: '我的订单' },
   { path: '/dispatcher/work-orders', label: '工单中心', count: '05' },
   { path: '/dispatcher/transfers', label: '调拨请求', count: '04' },
 ]
@@ -347,7 +348,7 @@ function logout() {
   }
 
   .dispatcher-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .sidebar-note {
