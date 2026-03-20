@@ -11,11 +11,11 @@
         <div class="panel-heading">
           <div>
             <p class="section-kicker">订单队列</p>
-            <h3>进行中 / 待接单</h3>
+            <h3>进行中订单</h3>
           </div>
         </div>
 
-        <div class="queue-list">
+        <div class="queue-list" v-if="queueOrders.length > 0">
           <button
             v-for="order in queueOrders"
             :key="order.id"
@@ -32,6 +32,12 @@
             <small>{{ statusText(order.status) }}</small>
           </button>
         </div>
+        <el-empty v-else description="暂无进行中订单" :image-size="96" />
+
+        <section class="placeholder-panel">
+          <p class="section-kicker">调度提醒（占位）</p>
+          <p>当前为设计占位，后续将接入实时提醒流与告警策略。</p>
+        </section>
       </aside>
 
       <section class="detail-panel">
@@ -49,19 +55,26 @@
 
         <div class="detail-body" v-if="selectedOrder">
           <div class="action-row">
-            <span>当前订单明细 {{ selectedOrder.items?.length || 0 }} 条</span>
+            <span>订单明细 {{ selectedOrder.items?.length || 0 }} 条</span>
           </div>
-          <div class="work-order-list">
-            <article v-for="item in selectedOrder.items || []" :key="item.id" class="work-order-card">
-              <div class="worker-avatar">{{ item.product_name.slice(0, 1) }}</div>
-              <div class="work-order-meta">
-                <strong>{{ item.product_name }}</strong>
-                <p>{{ item.product_sku }} · 数量 {{ item.qty }}</p>
-              </div>
-              <span class="status-chip">¥ {{ (item.unit_price || 0) / 100 }}</span>
-            </article>
-          </div>
+          <el-table :data="selectedOrder.items || []" stripe height="300">
+            <el-table-column prop="product_sku" label="SKU" min-width="120" />
+            <el-table-column prop="product_name" label="产品名称" min-width="180" />
+            <el-table-column prop="qty" label="数量" width="100" />
+            <el-table-column label="单价(元)" width="120">
+              <template #default="{ row }">{{ formatYuan(row.unit_price) }}</template>
+            </el-table-column>
+            <el-table-column label="小计(元)" width="120">
+              <template #default="{ row }">{{ formatYuan((row.unit_price || 0) * (row.qty || 0)) }}</template>
+            </el-table-column>
+          </el-table>
+
+          <section class="placeholder-panel">
+            <p class="section-kicker">阶段工单（占位）</p>
+            <p>当前保留原设计思路占位，后续将接入分阶段工单派发与推进操作。</p>
+          </section>
         </div>
+        <el-empty v-else description="请选择订单查看详情" :image-size="110" />
       </section>
 
       <aside class="insight-panel">
@@ -80,6 +93,12 @@
             <strong>{{ selectedOrder?.customer_contact || '-' }}</strong>
           </div>
           <div class="order-note">{{ selectedOrder?.description || '暂无备注' }}</div>
+        </section>
+
+        <section class="side-card placeholder-panel">
+          <p class="section-kicker">动态流（占位）</p>
+          <p>当前为占位设计，后续将接入订单活动流与异常事件时间线。</p>
+          <el-empty description="占位图" :image-size="86" />
         </section>
       </aside>
     </section>
@@ -100,27 +119,16 @@ const selectedOrder = computed(() => {
   return detailMap.value[selectedOrderId.value] || null
 })
 
-const pendingQueueCount = computed(() => queueOrders.value.filter((o) => o.status === 'pending_acceptance').length)
 const inProgressQueueCount = computed(() => queueOrders.value.filter((o) => o.status === 'in_progress').length)
-
-const focusTitle = computed(() => `待接单 ${pendingQueueCount.value} 单`)
-const focusDescription = computed(
-  () => `进行中 ${inProgressQueueCount.value} 单，请优先处理高优先级订单。`
-)
+const focusTitle = computed(() => `进行中 ${inProgressQueueCount.value} 单`)
+const focusDescription = computed(() => '工作台当前仅展示进行中订单，待接单请前往接单中心。')
 
 async function fetchWorkbench() {
   loading.value = true
   try {
-    const [pendingRes, myRes] = await Promise.all([
-      dispatcherOrdersApi.getPendingOrders(),
-      dispatcherOrdersApi.getMyOrders(),
-    ])
-    const merged = [...(myRes.data.items || []), ...(pendingRes.data.items || [])]
-    const deduped = new Map()
-    for (const item of merged) {
-      deduped.set(item.id, item)
-    }
-    queueOrders.value = [...deduped.values()]
+    const myRes = await dispatcherOrdersApi.getMyOrders()
+    queueOrders.value = (myRes.data.items || [])
+      .filter((item) => item.status === 'in_progress')
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
       .slice(0, 8)
 
@@ -139,14 +147,8 @@ async function fetchWorkbench() {
 
 async function ensureDetailLoaded(orderId) {
   if (detailMap.value[orderId]) return
-  const order = queueOrders.value.find((item) => item.id === orderId)
-  if (!order) return
   try {
-    const req =
-      order.status === 'pending_acceptance'
-        ? dispatcherOrdersApi.getPendingOrderDetail(orderId)
-        : dispatcherOrdersApi.getMyOrderDetail(orderId)
-    const res = await req
+    const res = await dispatcherOrdersApi.getMyOrderDetail(orderId)
     detailMap.value = { ...detailMap.value, [orderId]: res.data }
   } catch {
     detailMap.value = { ...detailMap.value }
@@ -159,9 +161,7 @@ async function selectOrder(orderId) {
 }
 
 function orderDetailPath(order) {
-  return order.status === 'pending_acceptance'
-    ? { name: 'dispatcher-order-detail', params: { orderId: order.id } }
-    : { name: 'dispatcher-my-order-detail', params: { orderId: order.id } }
+  return { name: 'dispatcher-my-order-detail', params: { orderId: order.id } }
 }
 
 function priorityText(priority) {
@@ -175,6 +175,11 @@ function statusText(status) {
     completed: '已完成',
     cancelled: '已取消',
   }[status] || status
+}
+
+function formatYuan(cents) {
+  const value = Number(cents || 0)
+  return `¥ ${Number.isFinite(value) ? (value / 100).toFixed(2) : '0.00'}`
 }
 
 onMounted(fetchWorkbench)
@@ -233,12 +238,15 @@ onMounted(fetchWorkbench)
 
 .queue-panel {
   padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .queue-list {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 .queue-card {
@@ -305,56 +313,17 @@ onMounted(fetchWorkbench)
   text-decoration: none;
 }
 
-.work-order-list {
-  display: grid;
-  gap: 10px;
-}
-
-.work-order-card {
+.action-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--dispatcher-border);
-  border-radius: 14px;
-  background: var(--dispatcher-surface);
-}
-
-.worker-avatar {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #ddd4c5;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.work-order-meta {
-  flex: 1;
-}
-
-.work-order-meta strong,
-.work-order-meta p {
-  margin: 0;
-}
-
-.work-order-meta p {
-  margin-top: 4px;
+  justify-content: space-between;
+  margin-bottom: 10px;
   color: var(--dispatcher-muted);
-}
-
-.status-chip {
-  padding: 5px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: #f7ead6;
-  color: #7a4a16;
 }
 
 .insight-panel {
   display: grid;
+  gap: 14px;
 }
 
 .side-card {
@@ -376,6 +345,18 @@ onMounted(fetchWorkbench)
   padding: 10px 12px;
   border-radius: 12px;
   background: #f2ece3;
+  color: var(--dispatcher-muted);
+}
+
+.placeholder-panel {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed #d3c7b6;
+  background: #f9f2e8;
+}
+
+.placeholder-panel p:last-child {
+  margin-top: 8px;
   color: var(--dispatcher-muted);
 }
 

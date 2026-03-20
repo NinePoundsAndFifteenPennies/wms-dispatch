@@ -2,7 +2,7 @@
   <div class="dispatcher-shell">
     <aside class="dispatcher-sidebar">
       <div class="brand-block">
-        <div class="brand-mark">WD</div>
+        <img class="brand-mark" src="../assets/images/warehouse-badge.svg" alt="WMS Dispatcher 仓库标识" />
         <div>
           <p class="brand-title">Dispatcher Desk</p>
           <p class="brand-subtitle">{{ warehouseTitle }}</p>
@@ -37,23 +37,33 @@
 
         <div class="topbar-actions">
           <div class="badge-group">
-            <span
+            <button
               v-for="badge in dispatcherStore.statusBadges"
               :key="badge.key"
+              type="button"
               class="status-badge"
               :class="`tone-${badge.tone}`"
+              @click="goByBadge(badge.key)"
             >
               {{ badge.label }} {{ badge.value }}
-            </span>
+            </button>
           </div>
 
-          <button type="button" class="profile-chip" @click="logout">
-            <span class="profile-avatar">{{ profileName.slice(0, 1) }}</span>
-            <span>
-              <strong>{{ profileName }}</strong>
-              <small>调度员 / {{ warehouseTitle }}</small>
-            </span>
-          </button>
+          <el-dropdown trigger="click" @command="handleCommand">
+            <button type="button" class="profile-chip">
+              <span class="profile-avatar">{{ profileName.slice(0, 1) }}</span>
+              <span>
+                <strong>{{ profileName }}</strong>
+                <small>调度员 / {{ warehouseTitle }}</small>
+              </span>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人中心（占位）</el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </header>
 
@@ -67,6 +77,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import http from '../api/common/http'
 import { useAuthStore } from '../stores/auth'
 import { useDispatcherStore } from '../stores/dispatcher'
@@ -106,6 +117,26 @@ const navItems = computed(() => [
 function logout() {
   authStore.clearToken()
   router.push('/login')
+}
+
+function handleCommand(command) {
+  if (command === 'logout') {
+    logout()
+    return
+  }
+  if (command === 'profile') {
+    ElMessage.info('个人中心功能暂未开放（占位）')
+  }
+}
+
+function goByBadge(key) {
+  if (key === 'pending') {
+    router.push('/dispatcher/orders')
+    return
+  }
+  if (key === 'active') {
+    router.push('/dispatcher/my-orders')
+  }
 }
 
 async function checkBackendStatus() {
@@ -187,13 +218,9 @@ onUnmounted(() => {
 .brand-mark {
   width: 40px;
   height: 40px;
-  display: grid;
-  place-items: center;
   border-radius: 12px;
-  background: #2b2721;
-  color: #f9f4eb;
-  font-size: 13px;
-  font-weight: 700;
+  object-fit: cover;
+  box-shadow: 0 6px 18px rgba(43, 39, 33, 0.22);
 }
 
 .brand-title,
@@ -334,6 +361,8 @@ onUnmounted(() => {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  border: none;
+  cursor: pointer;
 }
 
 .tone-pending {
