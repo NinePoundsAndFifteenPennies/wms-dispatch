@@ -279,6 +279,7 @@ class DispatcherService:
                 """
                 SELECT
                     i.id AS inventory_id,
+                    i.qty_available,
                     oi.qty
                 FROM order_items oi
                 LEFT JOIN inventory i
@@ -294,6 +295,11 @@ class DispatcherService:
         for row in inventory_rows:
             if row["inventory_id"] is None:
                 raise HTTPException(status_code=400, detail="Insufficient inventory for order acceptance")
+            if (row.get("qty_available") or 0) < row["qty"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient inventory for order acceptance: available quantity is not enough",
+                )
 
         for row in inventory_rows:
             update_result = await self.session.execute(
@@ -304,7 +310,7 @@ class DispatcherService:
                         qty_reserved = qty_reserved + :qty,
                         updated_at = NOW()
                     WHERE id = :inventory_id
-                      AND (qty_on_hand - qty_reserved - qty_locked) >= :qty
+                      AND qty_available >= :qty
                     """
                 ),
                 {"inventory_id": row["inventory_id"], "qty": row["qty"]},

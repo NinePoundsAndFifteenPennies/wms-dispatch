@@ -40,49 +40,22 @@
       </PriorityOrderColumn>
     </section>
 
-    <el-dialog v-model="detailVisible" title="订单详情（接单中心）" width="980px">
-      <el-descriptions v-if="detail" :column="3" border>
-        <el-descriptions-item label="订单号">{{ detail.order_no }}</el-descriptions-item>
-        <el-descriptions-item label="客户">{{ detail.customer_name }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ statusText(detail.status) }}</el-descriptions-item>
-        <el-descriptions-item label="优先级">{{ priorityText(detail.priority) }}</el-descriptions-item>
-        <el-descriptions-item label="总件数">{{ detail.total_items }}</el-descriptions-item>
-        <el-descriptions-item label="总金额(分)">{{ detail.total_amount }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="3">{{ detail.description || '-' }}</el-descriptions-item>
-      </el-descriptions>
-
-      <DetailInfoBlock title="订单明细" v-if="detail">
-        <el-table :data="detail.items" stripe>
-          <el-table-column prop="product_sku" label="SKU" width="130" />
-          <el-table-column prop="product_name" label="产品名称" min-width="200" />
-          <el-table-column prop="qty" label="数量" width="90" />
-          <el-table-column prop="unit_price" label="单价(分)" width="110" />
-        </el-table>
-      </DetailInfoBlock>
-
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="accepting" @click="acceptCurrentOrder">接单</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
 import DispatcherOrderCard from '../../components/dispatcher/DispatcherOrderCard.vue'
 import PriorityOrderColumn from '../../components/dispatcher/PriorityOrderColumn.vue'
-import DetailInfoBlock from '../../components/shared/DetailInfoBlock.vue'
 import OrderSearchBox from '../../components/shared/OrderSearchBox.vue'
 
 const loading = ref(false)
-const accepting = ref(false)
 const orders = ref([])
 const search = ref('')
-const detailVisible = ref(false)
-const detail = ref(null)
+const router = useRouter()
+let searchTimer = null
 
 const sortOrder = reactive({
   high: 'desc',
@@ -124,44 +97,20 @@ async function fetchOrders() {
   }
 }
 
-async function openDetail(orderId) {
-  const res = await dispatcherOrdersApi.getPendingOrderDetail(orderId)
-  detail.value = res.data
-  detailVisible.value = true
-}
-
-async function acceptCurrentOrder() {
-  if (!detail.value?.id) return
-  accepting.value = true
-  try {
-    await dispatcherOrdersApi.acceptOrder(detail.value.id)
-    ElMessage.success('接单成功')
-    detailVisible.value = false
-    await fetchOrders()
-  } finally {
-    accepting.value = false
-  }
-}
-
-function statusText(status) {
-  return {
-    pending_acceptance: '待接单',
-    in_progress: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
-  }[status] || status
-}
-
-function priorityText(priority) {
-  return {
-    high: '高',
-    medium: '中',
-    low: '低',
-  }[priority] || priority
+function openDetail(orderId) {
+  router.push({ name: 'dispatcher-order-detail', params: { orderId } })
 }
 
 onMounted(fetchOrders)
-watch(search, fetchOrders)
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    fetchOrders()
+  }, 250)
+})
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 </script>
 
 <style scoped>
