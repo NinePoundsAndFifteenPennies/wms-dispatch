@@ -265,7 +265,10 @@ resources/
 **阶段完成规则（由应用层保证）**：
 阶段完成有两条路径，均由应用层在写操作前校验，数据库不直接强制：
 
-1. **自动完成**：某阶段下所有关联 `work_orders` 的 status 均为 `completed` 时，系统自动将该阶段的 status 置为 `completed`，`completion_type` 记为 `auto`，`completed_at` 记录当前时间，`completed_by` 为空。
+1. **自动完成**：
+   - 某阶段下所有关联 `work_orders` 的 status 均为 `completed` 时，系统将自动检测下一阶段(如果有下一阶段)是否有至少一张工单，如果没有则不自动完成；反之，如果有至少一张工单或没有下一阶段，则将该阶段的 status 置为 `completed`，`completion_type` 记为 `auto`，`completed_at` 记录当前时间，`completed_by` 为空。
+   - 创建工单后也检测一次上一阶段（如果有上一阶段）的工单是否全部完成，如果是则自动完成上一阶段以实现逻辑闭环。
+  
 2. **手动标记**：调度员主动触发。应用层须同时满足以下两个前置条件才允许执行：
    * 该阶段下至少存在一张 `status = 'completed'` 的工单。
    * **【核心拦截条件】该阶段下不存在任何 `status IN ('in_progress', 'pending')` 的工单（剩余未完成工单，包括派了还没干的，须先由调度员 terminated）。**
