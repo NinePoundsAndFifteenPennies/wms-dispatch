@@ -177,9 +177,9 @@ function statusText(status) {
   }[status] || status
 }
 
-function formatYuan(cents) {
-  const value = Number(cents || 0)
-  return `¥ ${Number.isFinite(value) ? (value / 100).toFixed(2) : '0.00'}`
+function formatYuan(yuan) {
+  const value = Number(yuan || 0)
+  return `¥ ${Number.isFinite(value) ? value.toFixed(2) : '0.00'}`
 }
 
 onMounted(fetchWorkbench)

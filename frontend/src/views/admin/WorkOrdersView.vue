@@ -1,61 +1,171 @@
 <template>
-  <div class="work-order-page">
+  <div class="work-order-page" v-loading="loading">
     <header>
-      <h3>工单执行看板</h3>
-      <p>按阶段和状态跟踪工单，及时处理堵点。</p>
+      <h3>我的工单</h3>
+      <p v-if="isWorker">按状态推进你被分配的工单。</p>
+      <p v-else>管理员视图暂不接入工人执行接口。</p>
     </header>
 
-    <section class="columns">
-      <article class="column">
-        <h4>
-          <el-icon><Clock /></el-icon>
-          待开始
-        </h4>
-        <div class="ticket">
-          <el-icon><Box /></el-icon>
-          WO-00986 · 拣货 · 华南中心仓
-        </div>
-        <div class="ticket">
-          <el-icon><Box /></el-icon>
-          WO-00987 · 拣货 · 华东一仓
-        </div>
-      </article>
+    <el-empty v-if="!isWorker" description="当前账号为管理员，请使用调度员端进行派单与管理" />
 
-      <article class="column">
-        <h4>
-          <el-icon><Loading /></el-icon>
-          进行中
-        </h4>
-        <div class="ticket is-hot">
-          <el-icon><WarningFilled /></el-icon>
-          WO-00981 · 备货 · 截止 30 分钟
-        </div>
-        <div class="ticket">
-          <el-icon><Box /></el-icon>
-          WO-00982 · 发货 · 截止 2 小时
-        </div>
-      </article>
+    <template v-else>
+      <el-table :data="workOrders" stripe>
+        <el-table-column prop="id" label="工单ID" width="90" />
+        <el-table-column prop="order_no" label="订单号" min-width="120" />
+        <el-table-column label="阶段" min-width="100">
+          <template #default="{ row }">{{ stageText(row.stage_type) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="100">
+          <template #default="{ row }">{{ workOrderStatusText(row.status) }}</template>
+        </el-table-column>
+        <el-table-column label="优先级" min-width="100">
+          <template #default="{ row }">{{ priorityText(row.priority) }}</template>
+        </el-table-column>
+        <el-table-column prop="description" label="备注" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="220">
+          <template #default="{ row }">
+            <el-button
+              size="small"
+              type="primary"
+              plain
+              :disabled="row.status !== 'pending' || submitting"
+              @click="startWorkOrder(row)"
+            >
+              开始
+            </el-button>
+            <el-button
+              size="small"
+              type="success"
+              plain
+              :disabled="row.status !== 'in_progress' || submitting"
+              @click="openCompleteDialog(row)"
+            >
+              完成
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-      <article class="column">
-        <h4>
-          <el-icon><CircleCheckFilled /></el-icon>
-          已完成
-        </h4>
-        <div class="ticket">
-          <el-icon><Box /></el-icon>
-          WO-00974 · 拣货
-        </div>
-        <div class="ticket">
-          <el-icon><Box /></el-icon>
-          WO-00975 · 备货
-        </div>
-      </article>
-    </section>
+      <el-dialog v-model="completeDialogVisible" title="完成工单" width="520px">
+        <el-form label-width="90px">
+          <el-form-item label="备注类型">
+            <el-select v-model="completeForm.note_type" class="w-full">
+              <el-option label="正常" value="normal" />
+              <el-option label="破损" value="damaged" />
+              <el-option label="数量不符" value="qty_mismatch" />
+              <el-option label="其他" value="other" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="备注内容">
+            <el-input
+              v-model="completeForm.content"
+              type="textarea"
+              :rows="3"
+              placeholder="可选；填写后将写入工单备注"
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="completeDialogVisible = false">取消</el-button>
+          <el-button type="success" :loading="submitting" @click="completeWorkOrder">确认完成</el-button>
+        </template>
+      </el-dialog>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { Box, CircleCheckFilled, Clock, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../../stores/auth'
+import { workerWorkOrdersApi } from '../../api/worker/workOrders'
+
+const authStore = useAuthStore()
+const loading = ref(false)
+const submitting = ref(false)
+const workOrders = ref([])
+const completeDialogVisible = ref(false)
+const selectedWorkOrderId = ref(null)
+const completeForm = ref({ note_type: 'normal', content: '' })
+
+const isWorker = computed(() => authStore.currentUser?.role === 'worker')
+
+async function fetchWorkOrders() {
+  if (!isWorker.value) return
+  loading.value = true
+  try {
+    const res = await workerWorkOrdersApi.getMyWorkOrders()
+    workOrders.value = res.data?.items || []
+  } finally {
+    loading.value = false
+  }
+}
+
+function stageText(stage) {
+  return {
+    picking: '拣货',
+    staging: '备货',
+    shipping: '发货',
+  }[stage] || stage
+}
+
+function priorityText(priority) {
+  return {
+    high: '高',
+    medium: '中',
+    low: '低',
+  }[priority] || priority
+}
+
+function workOrderStatusText(status) {
+  return {
+    pending: '待处理',
+    in_progress: '进行中',
+    completed: '已完成',
+    terminated: '已终止',
+  }[status] || status
+}
+
+async function startWorkOrder(row) {
+  submitting.value = true
+  try {
+    await workerWorkOrdersApi.startWorkOrder(row.id)
+    ElMessage.success('工单已开始执行')
+    await fetchWorkOrders()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openCompleteDialog(row) {
+  selectedWorkOrderId.value = row.id
+  completeForm.value = { note_type: 'normal', content: '' }
+  completeDialogVisible.value = true
+}
+
+async function completeWorkOrder() {
+  if (!selectedWorkOrderId.value) return
+  submitting.value = true
+  try {
+    const payload = completeForm.value.content.trim()
+      ? {
+          note: {
+            note_type: completeForm.value.note_type,
+            content: completeForm.value.content.trim(),
+          },
+        }
+      : { note: null }
+
+    await workerWorkOrdersApi.completeWorkOrder(selectedWorkOrderId.value, payload)
+    completeDialogVisible.value = false
+    ElMessage.success('工单已完成')
+    await fetchWorkOrders()
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(fetchWorkOrders)
 </script>
 
 <style scoped>
@@ -73,48 +183,7 @@ p {
   color: #475569;
 }
 
-.columns {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.column {
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid #d8e1eb;
-  background: #ffffff;
-}
-
-.column h4 {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-  font-size: 14px;
-  color: #334155;
-}
-
-.ticket {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid #d9e2ec;
-  font-size: 13px;
-  background: #f8fbff;
-}
-
-.ticket.is-hot {
-  border-color: #f4b47a;
-  background: #fff5ec;
-}
-
-@media (max-width: 960px) {
-  .columns {
-    grid-template-columns: 1fr;
-  }
+.w-full {
+  width: 100%;
 }
 </style>

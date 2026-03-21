@@ -24,4 +24,24 @@ export const dispatcherOrdersApi = {
   getDashboardSummary() {
     return http.get('/dispatcher/dashboard-summary')
   },
+
+  getWorkers(params) {
+    return http.get('/dispatcher/workers', { params })
+  },
+
+  getOrderWorkOrders(orderId, params) {
+    return http.get(`/dispatcher/orders/${orderId}/work-orders`, { params })
+  },
+
+  createWorkOrder(orderId, payload) {
+    return http.post(`/dispatcher/orders/${orderId}/work-orders`, payload)
+  },
+
+  terminateWorkOrder(workOrderId, payload) {
+    return http.patch(`/dispatcher/work-orders/${workOrderId}/terminate`, payload)
+  },
+
+  manualCompleteStage(orderId, stageId, payload) {
+    return http.post(`/dispatcher/orders/${orderId}/stages/${stageId}/complete`, payload)
+  },
 }

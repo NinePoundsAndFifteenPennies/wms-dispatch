@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 OrderStatus = Literal["pending_acceptance", "in_progress", "completed", "cancelled"]
@@ -10,6 +10,8 @@ StageType = Literal["picking", "staging", "shipping"]
 StageStatus = Literal["not_started", "in_progress", "completed"]
 CompletionType = Literal["auto", "manual"]
 WorkOrderStatus = Literal["pending", "in_progress", "completed", "terminated"]
+WorkOrderSource = Literal["manual", "agent"]
+WorkOrderNoteType = Literal["normal", "damaged", "qty_mismatch", "other"]
 
 
 class DispatcherOrderListItemResponse(BaseModel):
@@ -145,3 +147,89 @@ class DispatcherWarehouseInventoryResponse(BaseModel):
     warehouse: DispatcherWarehouseSummaryResponse
     items: List[DispatcherWarehouseInventoryItemResponse]
     total: int
+
+
+class DispatcherWorkerOptionResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    skill_picking: int
+    skill_staging: int
+    skill_shipping: int
+
+
+class DispatcherCreateWorkOrderRequest(BaseModel):
+    stage_id: int
+    worker_id: int
+    priority: OrderPriority = "medium"
+    deadline: Optional[datetime] = None
+    description: Optional[str] = None
+
+
+class DispatcherTerminateWorkOrderRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class DispatcherManualCompleteStageRequest(BaseModel):
+    remark: str = Field(min_length=1, max_length=1000)
+
+
+class DispatcherOrderWorkOrderResponse(BaseModel):
+    id: int
+    order_id: int
+    stage_id: int
+    stage_type: StageType
+    worker_id: int
+    worker_name: str
+    dispatcher_id: int
+    warehouse_id: int
+    status: WorkOrderStatus
+    priority: OrderPriority
+    deadline: Optional[datetime] = None
+    description: Optional[str] = None
+    source: WorkOrderSource
+    assigned_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    terminated_at: Optional[datetime] = None
+    terminated_by: Optional[int] = None
+    termination_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DispatcherOrderWorkOrderListResponse(BaseModel):
+    items: List[DispatcherOrderWorkOrderResponse]
+    total: int
+
+
+class WorkerWorkOrderNotePayload(BaseModel):
+    note_type: WorkOrderNoteType = "normal"
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class WorkerWorkOrderResponse(BaseModel):
+    id: int
+    order_id: int
+    order_no: str
+    stage_id: int
+    stage_type: StageType
+    status: WorkOrderStatus
+    priority: OrderPriority
+    deadline: Optional[datetime] = None
+    description: Optional[str] = None
+    source: WorkOrderSource
+    assigned_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkerWorkOrderListResponse(BaseModel):
+    items: List[WorkerWorkOrderResponse]
+    total: int
+
+
+class WorkerCompleteWorkOrderRequest(BaseModel):
+    note: Optional[WorkerWorkOrderNotePayload] = None
