@@ -1,7 +1,7 @@
 <template>
   <div class="dispatcher-orders-page">
     <section class="page-head">
-      <h3>{{ isCompletedPage ? '已完成订单' : '我的订单' }}</h3>
+      <h3>我的订单</h3>
       <div class="head-actions">
         <el-select
           v-model="statusFilter"
@@ -10,17 +10,10 @@
           class="status-filter"
           @change="fetchOrders"
         >
-          <el-option v-if="!isCompletedPage" label="进行中" value="in_progress" />
-          <el-option v-if="!isCompletedPage" label="已取消" value="cancelled" />
+          <el-option label="进行中" value="in_progress" />
+          <el-option label="已取消" value="cancelled" />
           <el-option label="已完成" value="completed" />
         </el-select>
-        <el-switch
-          v-if="!isCompletedPage"
-          v-model="hideCompleted"
-          active-text="隐藏已完成"
-          inline-prompt
-          @change="fetchOrders"
-        />
         <OrderSearchBox v-model="search" />
       </div>
     </section>
@@ -75,7 +68,6 @@ const loading = ref(false)
 const orders = ref([])
 const search = ref('')
 const statusFilter = ref('')
-const hideCompleted = ref(true)
 const router = useRouter()
 const route = useRoute()
 let searchTimer = null
@@ -86,18 +78,21 @@ const sortOrder = reactive({
   low: 'desc',
 })
 
-const isCompletedPage = computed(() => route.name === 'dispatcher-my-orders-completed')
-const cardMode = computed(() => (isCompletedPage.value ? 'mine' : 'mine'))
+const cardMode = computed(() => 'mine')
+
+function resolveStatusFromRoute() {
+  const rawStatus = route.query.status
+  const status = typeof rawStatus === 'string' ? rawStatus : ''
+  if (['in_progress', 'completed', 'cancelled'].includes(status)) {
+    statusFilter.value = status
+    return
+  }
+  statusFilter.value = ''
+}
 
 const filtered = computed(() => {
   const keyword = search.value.trim().toLowerCase()
   let list = orders.value
-
-  if (isCompletedPage.value) {
-    list = list.filter((item) => item.status === 'completed')
-  } else if (hideCompleted.value && !statusFilter.value) {
-    list = list.filter((item) => item.status !== 'completed')
-  }
 
   if (statusFilter.value) {
     list = list.filter((item) => item.status === statusFilter.value)
@@ -129,10 +124,9 @@ const grouped = computed(() => {
 async function fetchOrders() {
   loading.value = true
   try {
-    const queryStatus = isCompletedPage.value ? 'completed' : statusFilter.value || undefined
     const res = await dispatcherOrdersApi.getMyOrders({
       search: search.value || undefined,
-      status: queryStatus,
+      status: statusFilter.value || undefined,
     })
     orders.value = res.data.items || []
   } finally {
@@ -144,7 +138,10 @@ function openDetail(orderId) {
   router.push({ name: 'dispatcher-my-order-detail', params: { orderId } })
 }
 
-onMounted(fetchOrders)
+onMounted(() => {
+  resolveStatusFromRoute()
+  fetchOrders()
+})
 watch(search, () => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
@@ -156,9 +153,9 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => route.name,
+  () => route.query.status,
   () => {
-    statusFilter.value = ''
+    resolveStatusFromRoute()
     fetchOrders()
   }
 )

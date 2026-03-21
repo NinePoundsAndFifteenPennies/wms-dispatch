@@ -570,6 +570,262 @@ class DispatcherService:
 
         return await self.get_order_detail(order_id=order_id, user_id=user_id, for_my_orders=True)
 
+    async def cancel_my_order(self, order_id: int, user_id: int, cancellation_reason: str):
+        try:
+            reason = (cancellation_reason or "").strip()
+            if not reason:
+                raise HTTPException(status_code=400, detail="Cancellation reason is required")
+
+            await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
+
+            order_lock_result = await self.session.execute(
+                text(
+                    """
+                    SELECT id, order_no, status, dispatcher_id, warehouse_id
+                    FROM orders
+                    WHERE id = :order_id
+                    FOR UPDATE
+                    """
+                ),
+                {"order_id": order_id},
+            )
+            order_row = order_lock_result.mappings().first()
+            if not order_row:
+                raise HTTPException(status_code=404, detail="Order not found")
+            if order_row["dispatcher_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Only responsible dispatcher can operate this order")
+            if order_row["status"] == "cancelled":
+                raise HTTPException(status_code=400, detail="Order is already cancelled")
+            if order_row["status"] != "in_progress":
+                raise HTTPException(status_code=400, detail="Only in-progress orders can be cancelled")
+            if order_row["warehouse_id"] is None:
+                raise HTTPException(status_code=409, detail="Order warehouse is missing")
+
+            open_work_orders_result = await self.session.execute(
+                text(
+                    """
+                    SELECT COALESCE(COUNT(*), 0)::INTEGER AS open_count
+                    FROM work_orders
+                    WHERE order_id = :order_id
+                      AND status IN ('pending', 'in_progress')
+                    """
+                ),
+                {"order_id": order_id},
+            )
+            open_count = open_work_orders_result.scalar_one() or 0
+            if open_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Please terminate all pending/in-progress work orders before cancelling the order",
+                )
+
+            required_items_result = await self.session.execute(
+                text(
+                    """
+                    SELECT
+                        oi.product_id,
+                        COALESCE(SUM(oi.qty), 0)::INTEGER AS required_qty
+                    FROM order_items oi
+                    WHERE oi.order_id = :order_id
+                    GROUP BY oi.product_id
+                    ORDER BY oi.product_id
+                    """
+                ),
+                {"order_id": order_id},
+            )
+            required_items = [dict(row) for row in required_items_result.mappings().all()]
+            if not required_items:
+                raise HTTPException(status_code=400, detail="Order has no items")
+            required_by_product = {row["product_id"]: row["required_qty"] for row in required_items}
+
+            inventory_rows_result = await self.session.execute(
+                text(
+                    """
+                    SELECT
+                        i.id AS inventory_id,
+                        i.product_id,
+                        i.qty_on_hand,
+                        i.qty_reserved,
+                        i.qty_locked
+                    FROM inventory i
+                    WHERE i.warehouse_id = :warehouse_id
+                      AND i.product_id IN (
+                          SELECT DISTINCT oi.product_id
+                          FROM order_items oi
+                          WHERE oi.order_id = :order_id
+                      )
+                    ORDER BY i.product_id
+                    FOR UPDATE
+                    """
+                ),
+                {
+                    "warehouse_id": order_row["warehouse_id"],
+                    "order_id": order_id,
+                },
+            )
+            inventory_rows = [dict(row) for row in inventory_rows_result.mappings().all()]
+            inventory_by_product = {row["product_id"]: row for row in inventory_rows}
+
+            missing_products = sorted(set(required_by_product.keys()) - set(inventory_by_product.keys()))
+            if missing_products:
+                raise HTTPException(status_code=409, detail="Inventory rows missing for cancellation release")
+
+            for product_id, required_qty in required_by_product.items():
+                inventory_row = inventory_by_product[product_id]
+                if inventory_row["qty_reserved"] < required_qty:
+                    raise HTTPException(status_code=409, detail="Insufficient reserved inventory for cancellation release")
+
+                before_on_hand = inventory_row["qty_on_hand"]
+                before_reserved = inventory_row["qty_reserved"]
+                before_locked = inventory_row["qty_locked"]
+
+                updated_inventory_result = await self.session.execute(
+                    text(
+                        """
+                        UPDATE inventory
+                        SET
+                            qty_reserved = qty_reserved - :qty,
+                            updated_at = NOW()
+                        WHERE id = :inventory_id
+                        RETURNING qty_on_hand, qty_reserved, qty_locked
+                        """
+                    ),
+                    {
+                        "inventory_id": inventory_row["inventory_id"],
+                        "qty": required_qty,
+                    },
+                )
+                updated_inventory = updated_inventory_result.mappings().first()
+                if not updated_inventory:
+                    raise HTTPException(status_code=409, detail="Inventory update conflict during order cancellation")
+
+                await self.session.execute(
+                    text(
+                        """
+                        INSERT INTO inventory_movements (
+                            inventory_id,
+                            warehouse_id,
+                            product_id,
+                            change_type,
+                            delta_on_hand,
+                            delta_reserved,
+                            delta_locked,
+                            before_on_hand,
+                            before_reserved,
+                            before_locked,
+                            after_on_hand,
+                            after_reserved,
+                            after_locked,
+                            related_type,
+                            related_id,
+                            operated_by
+                        ) VALUES (
+                            :inventory_id,
+                            :warehouse_id,
+                            :product_id,
+                            'reserve_release',
+                            0,
+                            :delta_reserved,
+                            0,
+                            :before_on_hand,
+                            :before_reserved,
+                            :before_locked,
+                            :after_on_hand,
+                            :after_reserved,
+                            :after_locked,
+                            'order',
+                            :related_id,
+                            :operated_by
+                        )
+                        """
+                    ),
+                    {
+                        "inventory_id": inventory_row["inventory_id"],
+                        "warehouse_id": order_row["warehouse_id"],
+                        "product_id": product_id,
+                        "delta_reserved": -required_qty,
+                        "before_on_hand": before_on_hand,
+                        "before_reserved": before_reserved,
+                        "before_locked": before_locked,
+                        "after_on_hand": updated_inventory["qty_on_hand"],
+                        "after_reserved": updated_inventory["qty_reserved"],
+                        "after_locked": updated_inventory["qty_locked"],
+                        "related_id": order_id,
+                        "operated_by": user_id,
+                    },
+                )
+
+            order_update_result = await self.session.execute(
+                text(
+                    """
+                    UPDATE orders
+                    SET
+                        status = 'cancelled',
+                        cancelled_at = NOW(),
+                        cancelled_by = :cancelled_by,
+                        cancellation_reason = :cancellation_reason,
+                        updated_at = NOW()
+                    WHERE id = :order_id
+                      AND status = 'in_progress'
+                      AND dispatcher_id = :dispatcher_id
+                    RETURNING id
+                    """
+                ),
+                {
+                    "order_id": order_id,
+                    "dispatcher_id": user_id,
+                    "cancelled_by": user_id,
+                    "cancellation_reason": reason,
+                },
+            )
+            updated_order = order_update_result.mappings().first()
+            if not updated_order:
+                raise HTTPException(status_code=409, detail="Order cancellation conflict")
+
+            await self.session.execute(
+                text(
+                    """
+                    INSERT INTO notifications (
+                        user_id,
+                        type,
+                        title,
+                        body,
+                        related_id,
+                        related_type,
+                        is_read,
+                        created_at
+                    )
+                    SELECT
+                        u.id,
+                        'order_cancelled',
+                        :title,
+                        :body,
+                        :related_id,
+                        'order',
+                        false,
+                        NOW()
+                    FROM users u
+                    WHERE u.role = 'admin'
+                      AND u.is_active = true
+                    """
+                ),
+                {
+                    "title": "订单已取消",
+                    "body": f"订单 {order_row['order_no']} 已由调度员取消，原因：{reason}",
+                    "related_id": order_id,
+                },
+            )
+
+            await self.session.commit()
+        except HTTPException:
+            await self.session.rollback()
+            raise
+        except Exception:
+            await self.session.rollback()
+            raise
+
+        return await self.get_order_detail(order_id=order_id, user_id=user_id, for_my_orders=True)
+
     async def get_warehouse_inventory(
         self,
         user_id: int,

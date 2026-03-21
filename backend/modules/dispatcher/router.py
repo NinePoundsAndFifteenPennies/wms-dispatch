@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from modules.auth.dependencies import get_current_user_required
 from modules.dispatcher.dependencies import get_dispatcher_service
 from modules.dispatcher.schemas import (
+    DispatcherCancelOrderRequest,
     DispatcherCreateWorkOrderRequest,
     DispatcherDashboardSummaryResponse,
     DispatcherManualCompleteStageRequest,
@@ -94,6 +95,20 @@ async def get_my_order_detail(
         order_id=order_id,
         user_id=current_user.get("id"),
         for_my_orders=True,
+    )
+
+
+@my_orders_router.post("/{order_id}/cancel", response_model=DispatcherOrderDetailResponse)
+async def cancel_my_order(
+    order_id: int,
+    payload: DispatcherCancelOrderRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.cancel_my_order(
+        order_id=order_id,
+        user_id=current_user.get("id"),
+        cancellation_reason=payload.cancellation_reason,
     )
 
 

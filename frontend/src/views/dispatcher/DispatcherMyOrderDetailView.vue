@@ -2,6 +2,15 @@
   <div class="detail-page" v-loading="loading">
     <section class="page-head">
       <el-button @click="goBack">返回我的订单</el-button>
+      <el-button
+        v-if="detail?.status === 'in_progress'"
+        type="danger"
+        plain
+        :disabled="cancelSubmitting"
+        @click="openCancelDialog"
+      >
+        取消订单
+      </el-button>
     </section>
 
     <el-descriptions v-if="detail" :column="3" border>
@@ -136,6 +145,22 @@
         <el-button type="primary" :loading="stageCompleteSubmitting" @click="submitManualComplete">确认完成</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="cancelDialogVisible" title="取消订单" width="520px">
+      <p class="summary-text">取消前请确保所有未完成工单已终止。</p>
+      <el-input
+        v-model="cancelReason"
+        type="textarea"
+        :rows="3"
+        maxlength="500"
+        show-word-limit
+        placeholder="请输入取消原因（必填）"
+      />
+      <template #footer>
+        <el-button @click="cancelDialogVisible = false">返回</el-button>
+        <el-button type="danger" :loading="cancelSubmitting" @click="submitCancelOrder">确认取消</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -157,10 +182,13 @@ const terminateDialogVisible = ref(false)
 const terminateSubmitting = ref(false)
 const stageCompleteSubmitting = ref(false)
 const manualCompleteVisible = ref(false)
+const cancelDialogVisible = ref(false)
+const cancelSubmitting = ref(false)
 const selectedStage = ref(null)
 const selectedWorkOrderId = ref(null)
 const terminateReason = ref('')
 const manualCompleteRemark = ref('')
+const cancelReason = ref('')
 
 const createForm = ref({
   stage_id: null,
@@ -327,6 +355,56 @@ async function submitManualComplete() {
     await fetchDetail()
   } finally {
     stageCompleteSubmitting.value = false
+  }
+}
+
+function hasOpenWorkOrders() {
+  return workOrders.value.some((item) => ['pending', 'in_progress'].includes(item.status))
+}
+
+function openCancelDialog() {
+  if (!detail.value || detail.value.status !== 'in_progress') {
+    ElMessage.warning('仅进行中的订单可取消')
+    return
+  }
+  if (hasOpenWorkOrders()) {
+    ElMessage.warning('请先终止所有未完成工单，再取消订单')
+    return
+  }
+  cancelReason.value = ''
+  cancelDialogVisible.value = true
+}
+
+async function submitCancelOrder() {
+  if (!detail.value) return
+
+  const reason = cancelReason.value.trim()
+  if (!reason) {
+    ElMessage.warning('请输入取消原因')
+    return
+  }
+  if (hasOpenWorkOrders()) {
+    ElMessage.warning('请先终止所有未完成工单，再取消订单')
+    return
+  }
+
+  cancelSubmitting.value = true
+  try {
+    await dispatcherOrdersApi.cancelMyOrder(route.params.orderId, {
+      cancellation_reason: reason,
+    })
+    cancelDialogVisible.value = false
+    ElMessage.success('订单已取消')
+    await fetchDetail()
+  } catch (error) {
+    const detailMessage = error?.response?.data?.detail
+    const message =
+      error?.response?.data?.message ||
+      (typeof detailMessage === 'string' ? detailMessage : detailMessage?.message) ||
+      '订单取消失败'
+    ElMessage.error(message)
+  } finally {
+    cancelSubmitting.value = false
   }
 }
 

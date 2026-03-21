@@ -21,6 +21,10 @@ export const dispatcherOrdersApi = {
     return http.get(`/dispatcher/my-orders/${orderId}`)
   },
 
+    cancelMyOrder(orderId, payload) {
+      return http.post(`/dispatcher/my-orders/${orderId}/cancel`, payload)
+    },
+
   getDashboardSummary() {
     return http.get('/dispatcher/dashboard-summary')
   },

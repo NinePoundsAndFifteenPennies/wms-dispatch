@@ -174,6 +174,10 @@ class DispatcherManualCompleteStageRequest(BaseModel):
     remark: str = Field(min_length=1, max_length=1000)
 
 
+class DispatcherCancelOrderRequest(BaseModel):
+    cancellation_reason: str = Field(min_length=1, max_length=500)
+
+
 class DispatcherOrderWorkOrderResponse(BaseModel):
     id: int
     order_id: int
