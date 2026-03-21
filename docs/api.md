@@ -677,3 +677,235 @@ GET /api/dispatcher/inventory?page=1&page_size=10&search=关键词
 **说明：**
 - 返回当前登录调度员所属仓库的库存分页列表。
 - 该接口为只读接口，不提供盘点修正/进货等写操作。
+
+### 8) 调度员可选工人列表
+
+```http
+GET /api/dispatcher/workers?search=关键词
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| search | string | - | 按用户名模糊搜索工人 |
+
+**说明：**
+- 仅返回当前调度员所属仓库下的 `worker` 角色用户。
+- 返回字段包含三阶段技能：`skill_picking/skill_staging/skill_shipping`。
+
+### 9) 调度员订单工单列表
+
+```http
+GET /api/dispatcher/orders/{order_id}/work-orders?stage_id=12&status=in_progress
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| stage_id | int | - | 按阶段 ID 过滤 |
+| status | string | - | `pending \| in_progress \| completed \| terminated` |
+
+**说明：**
+- 仅允许访问当前调度员本人订单。
+- 返回结构：`{ items: DispatcherOrderWorkOrderResponse[], total: number }`。
+
+### 10) 调度员创建工单
+
+```http
+POST /api/dispatcher/orders/{order_id}/work-orders
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| stage_id | int | 是 | 订单阶段 ID |
+| worker_id | int | 是 | 工人 ID |
+| priority | string | 否 | `high \| medium \| low`，默认 `medium` |
+| deadline | string(datetime) | 否 | 截止时间 |
+| description | string | 否 | 工单备注 |
+
+**说明：**
+- 遵循阶段串行与关门规则：已完成阶段不能新建工单，下一阶段需上一阶段完成后才可创建。
+
+### 11) 调度员终止工单
+
+```http
+PATCH /api/dispatcher/work-orders/{work_order_id}/terminate
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| reason | string | 是 | 终止原因，长度 1~500 |
+
+### 12) 调度员手动标记阶段完成
+
+```http
+POST /api/dispatcher/orders/{order_id}/stages/{stage_id}/complete
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| remark | string | 是 | 手动完成原因，长度 1~1000 |
+
+**说明：**
+- 返回最新订单详情对象。
+
+### 13) 我的订单列表参数补充（变更）
+
+```http
+GET /api/dispatcher/my-orders?search=关键词&status=completed
+```
+
+**新增查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| status | string | - | `in_progress \| completed \| cancelled` |
+
+**说明：**
+- 用于调度员“我的订单 / 已完成订单”分视图加载。
+
+---
+
+## 管理员工单只读总览接口（新增）
+
+```http
+GET /api/admin/work-orders
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| page | int | 1 | 当前页码，最小 1 |
+| page_size | int | 10 | 每页条数，1~100 |
+| search | string | - | 按订单号/工人名/调度员名/仓库名搜索 |
+| status | string | - | `pending \| in_progress \| completed \| terminated` |
+| stage_type | string | - | `picking \| staging \| shipping` |
+| priority | string | - | `high \| medium \| low` |
+| warehouse_id | int | - | 按仓库过滤 |
+| worker_id | int | - | 按工人过滤 |
+| dispatcher_id | int | - | 按调度员过滤 |
+
+**成功响应示例：**
+
+```json
+{
+  "items": [
+    {
+      "id": 3001,
+      "order_id": 1008,
+      "order_no": "ORD-20260321-0012",
+      "stage_id": 56,
+      "stage_type": "picking",
+      "warehouse_id": 1,
+      "warehouse_name": "北京中心周转仓",
+      "worker_id": 23,
+      "worker_name": "worker_li",
+      "dispatcher_id": 8,
+      "dispatcher_name": "disp_chen",
+      "status": "in_progress",
+      "priority": "high",
+      "source": "manual",
+      "description": "先处理易碎品",
+      "deadline": null,
+      "assigned_at": "2026-03-21T12:00:00",
+      "started_at": "2026-03-21T12:05:00",
+      "completed_at": null,
+      "terminated_at": null,
+      "created_at": "2026-03-21T12:00:00",
+      "updated_at": "2026-03-21T12:05:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## 管理员订单生命周期接口补充（新增）
+
+```http
+PATCH /api/admin/orders/{order_id}/pending
+POST  /api/admin/orders/{order_id}/cancel
+POST  /api/admin/orders/{order_id}/reopen
+```
+
+### 1) 编辑待接单订单
+
+仅允许 `pending_acceptance` 订单。
+
+### 2) 取消待接单订单
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| cancellation_reason | string | 是 | 取消原因，1~500 |
+
+### 3) 重开已取消订单
+
+会基于原已取消订单明细创建一张新的待接单订单。
+
+---
+
+## 工人模块接口（Worker，补全）
+
+> 认证要求：以下接口均需 `Authorization: Bearer <token>`，且当前用户角色必须为 `worker`。
+
+```http
+GET   /api/worker/work-orders
+PATCH /api/worker/work-orders/{work_order_id}/start
+PATCH /api/worker/work-orders/{work_order_id}/complete
+```
+
+### 1) 我的工单列表
+
+```http
+GET /api/worker/work-orders?status=in_progress
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| status | string | - | `pending \| in_progress \| completed \| terminated` |
+
+**说明：**
+- 仅返回当前登录工人的工单（后端按 `worker_id = current_user.id` 强约束）。
+
+### 2) 开始工单
+
+```http
+PATCH /api/worker/work-orders/{work_order_id}/start
+```
+
+**说明：**
+- 仅允许状态为 `pending` 的工单开始。
+- 若该工单所属阶段有前置阶段，前置阶段需已完成。
+
+### 3) 完成工单
+
+```http
+PATCH /api/worker/work-orders/{work_order_id}/complete
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| note | object | 否 | 可选工单备注对象 |
+
+`note` 子字段：
+- `note_type`: `normal \| damaged \| qty_mismatch \| other`
+- `content`: string，长度 1~2000
+
+**说明：**
+- 操作人必须是该工单被分配工人，否则返回 `403`。

@@ -16,6 +16,7 @@ class DispatcherService:
         user_id: int,
         for_my_orders: bool = False,
         search: Optional[str] = None,
+        status_filter: Optional[str] = None,
     ):
         clauses = ["1=1"]
         params = {"user_id": user_id}
@@ -23,6 +24,11 @@ class DispatcherService:
         if for_my_orders:
             clauses.append("o.dispatcher_id = :user_id")
             clauses.append("o.status IN ('in_progress', 'completed', 'cancelled')")
+            if status_filter:
+                if status_filter not in {"in_progress", "completed", "cancelled"}:
+                    raise HTTPException(status_code=400, detail="Invalid status filter")
+                clauses.append("o.status = :status_filter")
+                params["status_filter"] = status_filter
         else:
             clauses.append("o.status = 'pending_acceptance'")
 
@@ -37,11 +43,13 @@ class DispatcherService:
         user_id: int,
         for_my_orders: bool = False,
         search: Optional[str] = None,
+        status_filter: Optional[str] = None,
     ):
         where_sql, params = self._build_order_filters(
             user_id=user_id,
             for_my_orders=for_my_orders,
             search=search,
+            status_filter=status_filter,
         )
 
         count_result = await self.session.execute(
@@ -144,6 +152,7 @@ class DispatcherService:
             user_id=user_id,
             for_my_orders=for_my_orders,
             search=None,
+            status_filter=None,
         )
         params["order_id"] = order_id
 

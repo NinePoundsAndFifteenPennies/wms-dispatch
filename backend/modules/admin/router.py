@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from modules.admin.schemas import (
     ActiveStatusUpdate,
+    AdminWorkOrderListResponse,
     BatchDeleteRequest,
     CustomerCreate,
     OrderCreate,
@@ -45,6 +46,7 @@ warehouses_router = APIRouter(prefix="/admin/warehouses", tags=["Admin Warehouse
 customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"], dependencies=admin_only)
 products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"], dependencies=admin_only)
 orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"], dependencies=admin_only)
+work_orders_router = APIRouter(prefix="/admin/work-orders", tags=["Admin Work Orders"], dependencies=admin_only)
 
 @users_router.get("", response_model=UserListResponse)
 async def list_users(
@@ -421,8 +423,35 @@ async def reopen_cancelled_order(
 ):
     return await service.reopen_cancelled_order(order_id)
 
+
+@work_orders_router.get("", response_model=AdminWorkOrderListResponse)
+async def list_work_orders(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None, pattern="^(pending|in_progress|completed|terminated)$"),
+    stage_type: Optional[str] = Query(default=None, pattern="^(picking|staging|shipping)$"),
+    priority: Optional[str] = Query(default=None, pattern="^(high|medium|low)$"),
+    warehouse_id: Optional[int] = Query(default=None, ge=1),
+    worker_id: Optional[int] = Query(default=None, ge=1),
+    dispatcher_id: Optional[int] = Query(default=None, ge=1),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_work_orders(
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status,
+        stage_type=stage_type,
+        priority=priority,
+        warehouse_id=warehouse_id,
+        worker_id=worker_id,
+        dispatcher_id=dispatcher_id,
+    )
+
 router.include_router(users_router)
 router.include_router(warehouses_router)
 router.include_router(customers_router)
 router.include_router(products_router)
 router.include_router(orders_router)
+router.include_router(work_orders_router)

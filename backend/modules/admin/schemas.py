@@ -215,6 +215,8 @@ class ActiveStatusUpdate(BaseModel):
 
 OrderStatus = Literal["pending_acceptance", "in_progress", "completed", "cancelled"]
 OrderPriority = Literal["high", "medium", "low"]
+WorkOrderStatus = Literal["pending", "in_progress", "completed", "terminated"]
+StageType = Literal["picking", "staging", "shipping"]
 
 
 class OrderListItemResponse(BaseModel):
@@ -325,3 +327,33 @@ class OrderDetailResponse(BaseModel):
     total_amount: int
     total_items: int
     items: List[OrderDetailItemResponse]
+
+
+class AdminWorkOrderListItemResponse(BaseModel):
+    id: int
+    order_id: int
+    order_no: str
+    stage_id: int
+    stage_type: StageType
+    warehouse_id: int
+    warehouse_name: str
+    worker_id: int
+    worker_name: str
+    dispatcher_id: int
+    dispatcher_name: str
+    status: WorkOrderStatus
+    priority: OrderPriority
+    source: Literal["manual", "agent"]
+    description: Optional[str] = None
+    deadline: Optional[datetime] = None
+    assigned_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    terminated_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminWorkOrderListResponse(BaseModel):
+    items: List[AdminWorkOrderListItemResponse]
+    total: int

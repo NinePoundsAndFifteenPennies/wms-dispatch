@@ -1,8 +1,28 @@
 <template>
   <div class="dispatcher-orders-page">
     <section class="page-head">
-      <h3>我的订单</h3>
-      <OrderSearchBox v-model="search" />
+      <h3>{{ isCompletedPage ? '已完成订单' : '我的订单' }}</h3>
+      <div class="head-actions">
+        <el-select
+          v-model="statusFilter"
+          placeholder="按状态筛选"
+          clearable
+          class="status-filter"
+          @change="fetchOrders"
+        >
+          <el-option v-if="!isCompletedPage" label="进行中" value="in_progress" />
+          <el-option v-if="!isCompletedPage" label="已取消" value="cancelled" />
+          <el-option label="已完成" value="completed" />
+        </el-select>
+        <el-switch
+          v-if="!isCompletedPage"
+          v-model="hideCompleted"
+          active-text="隐藏已完成"
+          inline-prompt
+          @change="fetchOrders"
+        />
+        <OrderSearchBox v-model="search" />
+      </div>
     </section>
 
     <section class="columns-grid" v-loading="loading">
@@ -13,7 +33,7 @@
         @sort-change="sortOrder.high = $event"
       >
         <template #default="{ item }">
-          <DispatcherOrderCard :order="item" @click="openDetail(item.id)" />
+          <DispatcherOrderCard :order="item" :mode="cardMode" @click="openDetail(item.id)" />
         </template>
       </PriorityOrderColumn>
 
@@ -24,7 +44,7 @@
         @sort-change="sortOrder.medium = $event"
       >
         <template #default="{ item }">
-          <DispatcherOrderCard :order="item" @click="openDetail(item.id)" />
+          <DispatcherOrderCard :order="item" :mode="cardMode" @click="openDetail(item.id)" />
         </template>
       </PriorityOrderColumn>
 
@@ -35,7 +55,7 @@
         @sort-change="sortOrder.low = $event"
       >
         <template #default="{ item }">
-          <DispatcherOrderCard :order="item" @click="openDetail(item.id)" />
+          <DispatcherOrderCard :order="item" :mode="cardMode" @click="openDetail(item.id)" />
         </template>
       </PriorityOrderColumn>
     </section>
@@ -45,7 +65,7 @@
 
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
 import DispatcherOrderCard from '../../components/dispatcher/DispatcherOrderCard.vue'
 import PriorityOrderColumn from '../../components/dispatcher/PriorityOrderColumn.vue'
@@ -54,7 +74,10 @@ import OrderSearchBox from '../../components/shared/OrderSearchBox.vue'
 const loading = ref(false)
 const orders = ref([])
 const search = ref('')
+const statusFilter = ref('')
+const hideCompleted = ref(true)
 const router = useRouter()
+const route = useRoute()
 let searchTimer = null
 
 const sortOrder = reactive({
@@ -63,10 +86,26 @@ const sortOrder = reactive({
   low: 'desc',
 })
 
+const isCompletedPage = computed(() => route.name === 'dispatcher-my-orders-completed')
+const cardMode = computed(() => (isCompletedPage.value ? 'mine' : 'mine'))
+
 const filtered = computed(() => {
   const keyword = search.value.trim().toLowerCase()
-  if (!keyword) return orders.value
-  return orders.value.filter(
+  let list = orders.value
+
+  if (isCompletedPage.value) {
+    list = list.filter((item) => item.status === 'completed')
+  } else if (hideCompleted.value && !statusFilter.value) {
+    list = list.filter((item) => item.status !== 'completed')
+  }
+
+  if (statusFilter.value) {
+    list = list.filter((item) => item.status === statusFilter.value)
+  }
+
+  if (!keyword) return list
+
+  return list.filter(
     (item) =>
       String(item.order_no).toLowerCase().includes(keyword) ||
       String(item.customer_name).toLowerCase().includes(keyword)
@@ -90,7 +129,11 @@ const grouped = computed(() => {
 async function fetchOrders() {
   loading.value = true
   try {
-    const res = await dispatcherOrdersApi.getMyOrders({ search: search.value || undefined })
+    const queryStatus = isCompletedPage.value ? 'completed' : statusFilter.value || undefined
+    const res = await dispatcherOrdersApi.getMyOrders({
+      search: search.value || undefined,
+      status: queryStatus,
+    })
     orders.value = res.data.items || []
   } finally {
     loading.value = false
@@ -111,6 +154,14 @@ watch(search, () => {
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
 })
+
+watch(
+  () => route.name,
+  () => {
+    statusFilter.value = ''
+    fetchOrders()
+  }
+)
 </script>
 
 <style scoped>
@@ -124,6 +175,17 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-filter {
+  width: 150px;
 }
 
 .page-head h3 {

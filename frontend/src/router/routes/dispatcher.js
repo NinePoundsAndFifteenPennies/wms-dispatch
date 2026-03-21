@@ -39,6 +39,12 @@ export const dispatcherRoutes = [
         meta: { roles: ['dispatcher'], title: '我的订单' },
       },
       {
+        path: 'my-orders/completed',
+        name: 'dispatcher-my-orders-completed',
+        component: DispatcherMyOrdersView,
+        meta: { roles: ['dispatcher'], title: '已完成订单' },
+      },
+      {
         path: 'my-orders/:orderId',
         name: 'dispatcher-my-order-detail',
         component: DispatcherMyOrderDetailView,

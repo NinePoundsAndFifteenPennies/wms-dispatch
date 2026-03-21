@@ -110,6 +110,7 @@ const navItems = computed(() => [
   { path: '/dispatcher', label: '工作台' },
   { path: '/dispatcher/orders', label: '接单中心', count: dispatcherStore.summary.pending_count },
   { path: '/dispatcher/my-orders', label: '我的订单', count: dispatcherStore.summary.my_orders_count },
+  { path: '/dispatcher/my-orders/completed', label: '已完成订单', count: dispatcherStore.summary.my_completed_count },
   { path: '/dispatcher/inventory', label: '库存中心' },
   { path: '/dispatcher/work-orders', label: '工单中心' },
   { path: '/dispatcher/transfers', label: '调拨请求' },
@@ -137,6 +138,10 @@ function goByBadge(key) {
   }
   if (key === 'active') {
     router.push('/dispatcher/my-orders')
+    return
+  }
+  if (key === 'done') {
+    router.push('/dispatcher/my-orders/completed')
   }
 }
 

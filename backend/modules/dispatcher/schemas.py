@@ -214,6 +214,7 @@ class WorkerWorkOrderResponse(BaseModel):
     order_no: str
     stage_id: int
     stage_type: StageType
+    dispatcher_name: Optional[str] = None
     status: WorkOrderStatus
     priority: OrderPriority
     deadline: Optional[datetime] = None

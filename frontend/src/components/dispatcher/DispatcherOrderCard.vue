@@ -2,7 +2,7 @@
   <article class="order-card" @click="$emit('click')">
     <header class="card-head">
       <strong>{{ order.order_no }}</strong>
-      <span class="status">{{ statusText(order.status) }}</span>
+      <span class="status" :class="statusMeta(order.status).className">{{ statusMeta(order.status).text }}</span>
     </header>
     <p class="customer">{{ order.customer_name }}</p>
     <p class="meta">
@@ -14,22 +14,37 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   order: {
     type: Object,
     required: true,
+  },
+  mode: {
+    type: String,
+    default: 'default',
   },
 })
 
 defineEmits(['click'])
 
-function statusText(status) {
-  return {
-    pending_acceptance: '待接单',
-    in_progress: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
-  }[status] || status
+function statusMeta(status) {
+  const shared = {
+    completed: { text: '已完成', className: 'status-completed' },
+    cancelled: { text: '已取消', className: 'status-cancelled' },
+    in_progress: { text: '进行中', className: 'status-in-progress' },
+    pending_acceptance: { text: '待接单', className: 'status-pending' },
+  }
+
+  if (props.mode === 'mine') {
+    return {
+      completed: { text: '已完成 · 归档', className: 'status-completed' },
+      cancelled: { text: '已取消 · 已终止', className: 'status-cancelled' },
+      in_progress: { text: '执行中 · 待收尾', className: 'status-in-progress' },
+      pending_acceptance: { text: '待接单', className: 'status-pending' },
+    }[status] || { text: status, className: 'status-default' }
+  }
+
+  return shared[status] || { text: status, className: 'status-default' }
 }
 
 function priorityText(priority) {
@@ -87,11 +102,34 @@ function formatDate(value) {
 }
 
 .status {
-  color: #8f6d42;
   font-weight: 600;
-  background: #f7ead6;
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+.status-pending {
+  color: #8f6d42;
+  background: #f7ead6;
+}
+
+.status-in-progress {
+  color: #1f5c9a;
+  background: #e5f0fc;
+}
+
+.status-completed {
+  color: #22663f;
+  background: #dcf3e4;
+}
+
+.status-cancelled {
+  color: #9d4e3b;
+  background: #f9e6df;
+}
+
+.status-default {
+  color: #5f5a52;
+  background: #ece9e2;
 }
 
 .time {

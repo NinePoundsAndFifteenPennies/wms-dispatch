@@ -72,6 +72,7 @@ async def accept_pending_order(
 @my_orders_router.get("", response_model=DispatcherOrderListResponse)
 async def list_my_orders(
     search: Optional[str] = Query(default=None),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
     service: DispatcherService = Depends(get_dispatcher_service),
     current_user=Depends(require_dispatcher_user),
 ):
@@ -79,6 +80,7 @@ async def list_my_orders(
         user_id=current_user.get("id"),
         for_my_orders=True,
         search=search,
+        status_filter=status_filter,
     )
 
 

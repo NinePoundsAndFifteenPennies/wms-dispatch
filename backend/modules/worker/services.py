@@ -43,6 +43,7 @@ class WorkerService:
                     o.order_no,
                     wo.stage_id,
                     os.stage_type,
+                    d.username AS dispatcher_name,
                     wo.status,
                     wo.priority,
                     wo.deadline,
@@ -56,6 +57,7 @@ class WorkerService:
                 FROM work_orders wo
                 JOIN orders o ON o.id = wo.order_id
                 JOIN order_stages os ON os.id = wo.stage_id
+                JOIN users d ON d.id = wo.dispatcher_id
                 WHERE {where_sql}
                 ORDER BY
                     CASE wo.status
