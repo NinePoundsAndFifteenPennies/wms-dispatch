@@ -2,8 +2,12 @@
   <div class="dispatcher-page">
     <section class="page-hero">
       <p class="section-kicker">Transfer Requests</p>
-      <h2>调拨请求展示调度员的 mock 审批流观察视角</h2>
-      <p>本页不提交真实调拨单，只模拟查看待审批、运输中与已入库状态。</p>
+      <h2>调拨请求</h2>
+      <p>查看跨仓调拨单的审批进度、运输状态与入库确认。</p>
+      <p class="mock-badge">
+        <span class="mock-tag">演示数据</span>
+        本页当前使用静态模拟数据，调拨功能尚在开发中。
+      </p>
     </section>
 
     <section class="transfer-list">
@@ -38,8 +42,8 @@
         <p class="reason-copy">{{ item.reason }}</p>
 
         <div class="transfer-actions">
-          <button type="button" class="ghost-button">查看详情</button>
-          <button type="button" class="primary-button">跟进入库</button>
+          <button type="button" class="ghost-button" @click="showMockTip('查看详情')">查看详情</button>
+          <button type="button" class="primary-button" @click="showMockTip('跟进入库')">跟进入库</button>
         </div>
       </article>
     </section>
@@ -47,7 +51,12 @@
 </template>
 
 <script setup>
+import { ElMessage } from 'element-plus'
 import { dispatcherTransfersMock } from '../../modules/dispatcher/mock/dispatcher'
+
+function showMockTip(action) {
+  ElMessage.info(`「${action}」功能尚在开发中，当前为演示数据`)
+}
 
 function statusClass(status) {
   return {
@@ -95,10 +104,32 @@ function statusClass(status) {
   font-size: 24px;
 }
 
-.page-hero p:last-child {
+.page-hero p:last-of-type:not(.mock-badge) {
   margin-top: 8px;
   color: var(--dispatcher-muted);
   line-height: 1.6;
+}
+
+.mock-badge {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fef3cd;
+  color: #856404;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mock-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #f0c040;
+  color: #5a3e00;
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .transfer-list {

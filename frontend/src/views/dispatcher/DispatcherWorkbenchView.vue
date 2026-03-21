@@ -127,7 +127,7 @@
               <span class="worker-state">{{ row.state }}</span>
             </div>
           </div>
-          <el-empty v-else description="暂无工人数据" :image-size="72" />
+          <el-empty v-else :description="selectedOrder ? '暂无已派发工单，请先派发工单' : '请先选择左侧订单'" :image-size="72" />
 
           <div class="summary-box" v-if="selectedOrder">
             <div class="summary-row"><span>产品种类</span><strong>{{ selectedOrder.items?.length || 0 }} SKU</strong></div>
@@ -236,12 +236,7 @@ const workerStatusRows = computed(() => {
       }))
   }
 
-  const detail = selectedOrder.value
-  if (!detail) return []
-  return [
-    { key: 'placeholder-1', name: '工人状态', state: '当前订单暂无已派发工单', tone: 'gray' },
-    { key: 'placeholder-2', name: '可接入数据', state: '点击右上角派发工单后实时更新', tone: 'gray' },
-  ]
+  return []
 })
 
 const timeline = computed(() => {
@@ -406,9 +401,9 @@ function statusText(status) {
 
 function stageText(stageType) {
   return {
-    picking: 'picking',
-    staging: 'staging',
-    shipping: 'shipping',
+    picking: '拣货',
+    staging: '备货',
+    shipping: '发货',
   }[stageType] || stageType
 }
 

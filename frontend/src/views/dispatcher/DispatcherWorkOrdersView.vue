@@ -2,8 +2,14 @@
   <div class="dispatcher-page">
     <section class="page-hero">
       <p class="section-kicker">Work Order Center</p>
-      <h2>工单中心保留调度看板结构，但全部使用本地静态数据</h2>
-      <p>可浏览不同阶段与风险状态，方便先落地调度工作台的信息层。</p>
+      <h2>工单中心</h2>
+      <p>按阶段与风险状态浏览所有工单，快速定位超时告警与待处理任务。</p>
+      <p class="mock-badge">
+        <span class="mock-tag">演示数据</span>
+        本页当前使用静态模拟数据，真实工单请前往
+        <router-link to="/dispatcher/my-orders">我的订单</router-link>
+        中查看与管理。
+      </p>
     </section>
 
     <section class="board-grid">
@@ -88,10 +94,38 @@ function statusClass(status) {
   font-size: 24px;
 }
 
-.page-hero p:last-child {
+.page-hero p:last-of-type:not(.mock-badge) {
   margin-top: 8px;
   color: var(--dispatcher-muted);
   line-height: 1.6;
+}
+
+.mock-badge {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fef3cd;
+  color: #856404;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mock-badge a {
+  color: #664d03;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.mock-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #f0c040;
+  color: #5a3e00;
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .board-grid {

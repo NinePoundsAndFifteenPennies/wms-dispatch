@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, nextTick, ref } from 'vue'
 
 const props = defineProps({
   title: {
@@ -66,6 +66,14 @@ function handleScroll(event) {
   scrollTop.value = target.scrollTop
   viewportHeight.value = target.clientHeight
 }
+
+onMounted(() => {
+  nextTick(() => {
+    if (scrollRef.value) {
+      viewportHeight.value = scrollRef.value.clientHeight
+    }
+  })
+})
 </script>
 
 <style scoped>

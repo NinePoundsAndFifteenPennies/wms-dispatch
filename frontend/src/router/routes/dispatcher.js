@@ -1,12 +1,13 @@
 import DispatcherLayout from '../../layouts/DispatcherLayout.vue'
-import DispatcherWorkbenchView from '../../views/dispatcher/DispatcherWorkbenchView.vue'
-import DispatcherOrdersView from '../../views/dispatcher/DispatcherOrdersView.vue'
-import DispatcherOrderDetailView from '../../views/dispatcher/DispatcherOrderDetailView.vue'
-import DispatcherMyOrdersView from '../../views/dispatcher/DispatcherMyOrdersView.vue'
-import DispatcherMyOrderDetailView from '../../views/dispatcher/DispatcherMyOrderDetailView.vue'
-import DispatcherWorkOrdersView from '../../views/dispatcher/DispatcherWorkOrdersView.vue'
-import DispatcherTransfersView from '../../views/dispatcher/DispatcherTransfersView.vue'
-import DispatcherInventoryView from '../../views/dispatcher/DispatcherInventoryView.vue'
+
+const DispatcherWorkbenchView = () => import('../../views/dispatcher/DispatcherWorkbenchView.vue')
+const DispatcherOrdersView = () => import('../../views/dispatcher/DispatcherOrdersView.vue')
+const DispatcherOrderDetailView = () => import('../../views/dispatcher/DispatcherOrderDetailView.vue')
+const DispatcherMyOrdersView = () => import('../../views/dispatcher/DispatcherMyOrdersView.vue')
+const DispatcherMyOrderDetailView = () => import('../../views/dispatcher/DispatcherMyOrderDetailView.vue')
+const DispatcherWorkOrdersView = () => import('../../views/dispatcher/DispatcherWorkOrdersView.vue')
+const DispatcherTransfersView = () => import('../../views/dispatcher/DispatcherTransfersView.vue')
+const DispatcherInventoryView = () => import('../../views/dispatcher/DispatcherInventoryView.vue')
 
 export const dispatcherRoutes = [
   {

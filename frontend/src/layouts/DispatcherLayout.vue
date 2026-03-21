@@ -15,7 +15,7 @@
           :key="item.path"
           :to="item.path"
           class="nav-link"
-          :class="{ active: activePath === item.path }"
+          :class="{ active: isNavActive(item.path) }"
         >
           <span>{{ item.label }}</span>
           <span v-if="item.count !== undefined" class="nav-pill">{{ item.count }}</span>
@@ -94,6 +94,11 @@ let statusTimer = null
 
 const activePath = computed(() => route.path)
 const warehouseTitle = computed(() => dispatcherStore.summary.warehouse_name || '仓库未绑定')
+
+function isNavActive(navPath) {
+  if (navPath === '/dispatcher') return activePath.value === '/dispatcher'
+  return activePath.value === navPath || activePath.value.startsWith(navPath + '/')
+}
 const profileName = computed(() => authStore.currentUser?.username || '未知用户')
 
 const backendStatusText = computed(() => {

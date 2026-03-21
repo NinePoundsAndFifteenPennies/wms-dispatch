@@ -6,7 +6,7 @@
         {{ accepting ? '检测库存并接单中...' : '接单' }}
       </el-button>
     </section>
-    <p v-if="accepting" class="accept-hint">正在检测库存 available 并锁定预留，请稍候...</p>
+    <p v-if="accepting" class="accept-hint">正在检测可用库存并锁定预留，请稍候...</p>
 
     <el-descriptions v-if="detail" :column="3" border>
       <el-descriptions-item label="订单号">{{ detail.order_no }}</el-descriptions-item>
@@ -29,12 +29,12 @@
     </DetailInfoBlock>
 
     <el-dialog v-model="shortageDialogVisible" title="可用库存不足" width="680px">
-      <p class="shortage-intro">以下商品按当前 available 校验不足，无法接单：</p>
+      <p class="shortage-intro">以下商品可用库存不足，无法接单：</p>
       <el-table :data="shortageItems" border size="small">
         <el-table-column prop="sku" label="SKU" min-width="120" />
         <el-table-column prop="product_name" label="产品名称" min-width="160" />
         <el-table-column prop="required_qty" label="需求量" width="90" />
-        <el-table-column prop="available_qty" label="available" width="100" />
+        <el-table-column prop="available_qty" label="可用量" width="100" />
         <el-table-column prop="shortage_qty" label="缺口" width="90" />
       </el-table>
       <template #footer>
@@ -65,6 +65,8 @@ async function fetchDetail() {
   try {
     const res = await dispatcherOrdersApi.getPendingOrderDetail(route.params.orderId)
     detail.value = res.data
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '获取订单详情失败')
   } finally {
     loading.value = false
   }
@@ -73,7 +75,7 @@ async function fetchDetail() {
 async function acceptOrder() {
   accepting.value = true
   try {
-    ElMessage.info('正在检测库存 available ...')
+    ElMessage.info('正在检测可用库存...')
     await dispatcherOrdersApi.acceptOrder(route.params.orderId, { silentError: true })
     ElMessage.success('接单成功')
     router.push({ name: 'dispatcher-my-order-detail', params: { orderId: route.params.orderId } })

@@ -217,6 +217,8 @@ async function fetchDetail() {
     if (!createForm.value.worker_id && workers.value.length > 0) {
       createForm.value.worker_id = workers.value[0].id
     }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '获取订单详情失败，请稍后重试')
   } finally {
     loading.value = false
   }
