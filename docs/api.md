@@ -959,6 +959,7 @@ POST  /api/admin/orders/{order_id}/reopen
 
 ```http
 GET   /api/worker/work-orders
+GET   /api/worker/work-orders/{work_order_id}
 PATCH /api/worker/work-orders/{work_order_id}/start
 PATCH /api/worker/work-orders/{work_order_id}/complete
 ```
@@ -981,7 +982,87 @@ GET /api/worker/work-orders?status=in_progress
   - `[override][risk_codes] override_reason`。
   前端应在工单详情中展示该结构化信息（风险类型、放行原因）以及备注正文。
 
-### 2) 开始工单
+### 2) 工单详情
+
+```http
+GET /api/worker/work-orders/{work_order_id}
+```
+
+**路径参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| work_order_id | int | 工单 ID |
+
+**成功响应（节选）：**
+
+```json
+{
+  "id": 1201,
+  "order_id": 3001,
+  "order_no": "ORD-20260322-0001",
+  "stage_id": 8101,
+  "stage_type": "picking",
+  "status": "in_progress",
+  "priority": "high",
+  "description": "[override][skill_gap] 紧急补单\n优先处理 A 区货架",
+  "source": "manual",
+  "worker_stage_skill": 4,
+  "stage_required_skill_min": 2,
+  "stage_required_skill_max": 6,
+  "order_items": [
+    {
+      "product_id": 501,
+      "product_sku": "SKU-10001",
+      "product_name": "防震泡沫",
+      "product_cover_image": "/resources/product_images/p501.png",
+      "qty": 6,
+      "req_skill_picking": 3,
+      "req_skill_staging": 2,
+      "req_skill_shipping": 1,
+      "current_stage_required_skill": 3,
+      "worker_stage_skill": 4,
+      "is_skill_matched": true
+    },
+    {
+      "product_id": 502,
+      "product_sku": "SKU-10002",
+      "product_name": "精密玻璃件",
+      "product_cover_image": "/resources/product_images/p502.png",
+      "qty": 2,
+      "req_skill_picking": 6,
+      "req_skill_staging": 5,
+      "req_skill_shipping": 4,
+      "current_stage_required_skill": 6,
+      "worker_stage_skill": 4,
+      "is_skill_matched": false
+    }
+  ]
+}
+```
+
+**字段说明（本次新增）：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| worker_stage_skill | int | 当前工单阶段下，工人自身技能值 |
+| stage_required_skill_min | int | 当前工单阶段下，订单商品技能要求最小值 |
+| stage_required_skill_max | int | 当前工单阶段下，订单商品技能要求最大值 |
+| order_items | array | 订单商品明细（含技能匹配结果） |
+
+`order_items` 子字段：
+- `product_id` / `product_sku` / `product_name` / `product_cover_image`
+- `qty`：商品数量
+- `req_skill_picking` / `req_skill_staging` / `req_skill_shipping`：商品三阶段技能要求
+- `current_stage_required_skill`：当前工单阶段对应的技能要求值
+- `worker_stage_skill`：当前工单阶段下的工人技能值
+- `is_skill_matched`：`worker_stage_skill >= current_stage_required_skill` 时为 `true`
+
+**说明：**
+- 仅允许查看当前登录工人自己被分配的工单详情，否则返回 `404`。
+- `description` 若包含风险放行结构化前缀，前端应同时展示“风险类型/放行原因/备注正文”。
+
+### 3) 开始工单
 
 ```http
 PATCH /api/worker/work-orders/{work_order_id}/start
@@ -991,7 +1072,7 @@ PATCH /api/worker/work-orders/{work_order_id}/start
 - 仅允许状态为 `pending` 的工单开始。
 - 若该工单所属阶段有前置阶段，前置阶段需已完成。
 
-### 3) 完成工单
+### 4) 完成工单
 
 ```http
 PATCH /api/worker/work-orders/{work_order_id}/complete

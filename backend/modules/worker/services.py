@@ -128,6 +128,9 @@ class WorkerService:
                     wo.stage_id,
                     os.stage_type,
                     d.username AS dispatcher_name,
+                    wu.skill_picking,
+                    wu.skill_staging,
+                    wu.skill_shipping,
                     wo.status,
                     wo.priority,
                     wo.deadline,
@@ -144,6 +147,7 @@ class WorkerService:
                 JOIN orders o ON o.id = wo.order_id
                 JOIN order_stages os ON os.id = wo.stage_id
                 JOIN users d ON d.id = wo.dispatcher_id
+                                JOIN users wu ON wu.id = wo.worker_id
                 WHERE wo.id = :work_order_id
                   AND wo.worker_id = :worker_id
                 LIMIT 1
@@ -154,7 +158,70 @@ class WorkerService:
         row = result.mappings().first()
         if not row:
             raise HTTPException(status_code=404, detail="Work order not found")
-        return dict(row)
+
+        required_skill_key = {
+            "picking": "req_skill_picking",
+            "staging": "req_skill_staging",
+            "shipping": "req_skill_shipping",
+        }.get(row["stage_type"])
+        worker_skill_key = {
+            "picking": "skill_picking",
+            "staging": "skill_staging",
+            "shipping": "skill_shipping",
+        }.get(row["stage_type"])
+
+        if not required_skill_key or not worker_skill_key:
+            raise HTTPException(status_code=400, detail="Invalid stage type on work order")
+
+        worker_stage_skill = int(row[worker_skill_key] or 0)
+
+        items_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    oi.product_id,
+                    p.sku AS product_sku,
+                    p.name AS product_name,
+                    p.cover_image AS product_cover_image,
+                    oi.qty,
+                    p.req_skill_picking,
+                    p.req_skill_staging,
+                    p.req_skill_shipping
+                FROM order_items oi
+                JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = :order_id
+                ORDER BY oi.id ASC
+                """
+            ),
+            {"order_id": row["order_id"]},
+        )
+
+        order_items = []
+        for item_row in items_result.mappings().all():
+            item = dict(item_row)
+            current_stage_required_skill = int(item.get(required_skill_key) or 0)
+            order_items.append(
+                {
+                    **item,
+                    "current_stage_required_skill": current_stage_required_skill,
+                    "worker_stage_skill": worker_stage_skill,
+                    "is_skill_matched": worker_stage_skill >= current_stage_required_skill,
+                }
+            )
+
+        stage_skill_levels = [int(item.get("current_stage_required_skill") or 0) for item in order_items]
+        stage_required_skill_min = min(stage_skill_levels) if stage_skill_levels else 0
+        stage_required_skill_max = max(stage_skill_levels) if stage_skill_levels else 0
+
+        detail = dict(row)
+        detail.pop("skill_picking", None)
+        detail.pop("skill_staging", None)
+        detail.pop("skill_shipping", None)
+        detail["worker_stage_skill"] = worker_stage_skill
+        detail["stage_required_skill_min"] = stage_required_skill_min
+        detail["stage_required_skill_max"] = stage_required_skill_max
+        detail["order_items"] = order_items
+        return detail
 
     async def _lock_worker_work_order(self, work_order_id: int, user_id: int):
         result = await self.session.execute(

@@ -275,10 +275,28 @@ class WorkerWorkOrderListResponse(BaseModel):
     total: int
 
 
+class WorkerWorkOrderDetailItemResponse(BaseModel):
+    product_id: int
+    product_sku: str
+    product_name: str
+    product_cover_image: Optional[str] = None
+    qty: int
+    req_skill_picking: int
+    req_skill_staging: int
+    req_skill_shipping: int
+    current_stage_required_skill: int
+    worker_stage_skill: int
+    is_skill_matched: bool
+
+
 class WorkerWorkOrderDetailResponse(WorkerWorkOrderResponse):
     terminated_at: Optional[datetime] = None
     terminated_by: Optional[int] = None
     termination_reason: Optional[str] = None
+    worker_stage_skill: int = 0
+    stage_required_skill_min: int = 0
+    stage_required_skill_max: int = 0
+    order_items: List[WorkerWorkOrderDetailItemResponse] = Field(default_factory=list)
 
 
 class WorkerCompleteWorkOrderRequest(BaseModel):
