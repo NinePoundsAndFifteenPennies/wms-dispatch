@@ -459,7 +459,7 @@ class DispatcherService:
                         UPDATE inventory
                         SET
                             qty_reserved = qty_reserved + :qty,
-                            updated_at = NOW()
+                            updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                         WHERE id = :inventory_id
                         RETURNING qty_on_hand, qty_reserved, qty_locked
                         """
@@ -547,8 +547,8 @@ class DispatcherService:
                         status = 'in_progress',
                         dispatcher_id = :dispatcher_id,
                         warehouse_id = :warehouse_id,
-                        accepted_at = NOW(),
-                        updated_at = NOW()
+                        accepted_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :order_id
                       AND status = 'pending_acceptance'
                       AND dispatcher_id IS NULL
@@ -569,7 +569,7 @@ class DispatcherService:
                 text(
                     """
                     INSERT INTO order_stages (order_id, stage_type, status, created_at, updated_at)
-                    SELECT :order_id, stage_type, 'not_started', NOW(), NOW()
+                    SELECT :order_id, stage_type, 'not_started', (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0), (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     FROM (VALUES ('picking'), ('staging'), ('shipping')) AS s(stage_type)
                     ON CONFLICT (order_id, stage_type) DO NOTHING
                     """
@@ -717,7 +717,7 @@ class DispatcherService:
                         UPDATE inventory
                         SET
                             qty_reserved = qty_reserved - :qty,
-                            updated_at = NOW()
+                            updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                         WHERE id = :inventory_id
                         RETURNING qty_on_hand, qty_reserved, qty_locked
                         """
@@ -793,10 +793,10 @@ class DispatcherService:
                     UPDATE orders
                     SET
                         status = 'cancelled',
-                        cancelled_at = NOW(),
+                        cancelled_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                         cancelled_by = :cancelled_by,
                         cancellation_reason = :cancellation_reason,
-                        updated_at = NOW()
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :order_id
                       AND status = 'in_progress'
                       AND dispatcher_id = :dispatcher_id
@@ -835,7 +835,7 @@ class DispatcherService:
                         :related_id,
                         'order',
                         false,
-                        NOW()
+                        (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     FROM users u
                     WHERE u.role = 'admin'
                       AND u.is_active = true
@@ -1247,7 +1247,6 @@ class DispatcherService:
                     wo.deadline,
                     wo.description,
                     wo.source,
-                    wo.assigned_at,
                     wo.started_at,
                     wo.completed_at,
                     wo.terminated_at,
@@ -1286,7 +1285,6 @@ class DispatcherService:
                     wo.deadline,
                     wo.description,
                     wo.source,
-                    wo.assigned_at,
                     wo.started_at,
                     wo.completed_at,
                     wo.terminated_at,
@@ -1375,7 +1373,6 @@ class DispatcherService:
                         deadline,
                         description,
                         source,
-                        assigned_at,
                         created_at,
                         updated_at
                     ) VALUES (
@@ -1389,9 +1386,8 @@ class DispatcherService:
                         :deadline,
                         :description,
                         'manual',
-                        NOW(),
-                        NOW(),
-                        NOW()
+                        (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                        (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     )
                     RETURNING id
                     """
@@ -1450,10 +1446,10 @@ class DispatcherService:
                     UPDATE work_orders
                     SET
                         status = 'terminated',
-                        terminated_at = NOW(),
+                        terminated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                         terminated_by = :terminated_by,
                         termination_reason = :reason,
-                        updated_at = NOW()
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :work_order_id
                     """
                 ),
@@ -1524,10 +1520,10 @@ class DispatcherService:
                     SET
                         status = 'completed',
                         completion_type = 'manual',
-                        completed_at = NOW(),
+                        completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                         completed_by = :completed_by,
                         remark = :remark,
-                        updated_at = NOW()
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :stage_id
                     """
                 ),
@@ -1636,9 +1632,9 @@ class DispatcherService:
                 SET
                     status = 'completed',
                     completion_type = 'auto',
-                    completed_at = NOW(),
+                    completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                     completed_by = NULL,
-                    updated_at = NOW()
+                    updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                 WHERE id = :stage_id
                   AND status <> 'completed'
                 """
@@ -1749,7 +1745,7 @@ class DispatcherService:
                     SET
                         qty_on_hand = qty_on_hand - :qty,
                         qty_reserved = qty_reserved - :qty,
-                        updated_at = NOW()
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :inventory_id
                     RETURNING qty_on_hand, qty_reserved, qty_locked
                     """
@@ -1826,11 +1822,12 @@ class DispatcherService:
                 UPDATE orders
                 SET
                     status = 'completed',
-                    completed_at = NOW(),
-                    updated_at = NOW()
+                    completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                    updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                 WHERE id = :order_id
                   AND status = 'in_progress'
                 """
             ),
             {"order_id": order_id},
         )
+

@@ -231,7 +231,6 @@ class DispatcherOrderWorkOrderResponse(BaseModel):
     deadline: Optional[datetime] = None
     description: Optional[str] = None
     source: WorkOrderSource
-    assigned_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     terminated_at: Optional[datetime] = None
@@ -263,7 +262,6 @@ class WorkerWorkOrderResponse(BaseModel):
     deadline: Optional[datetime] = None
     description: Optional[str] = None
     source: WorkOrderSource
-    assigned_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime

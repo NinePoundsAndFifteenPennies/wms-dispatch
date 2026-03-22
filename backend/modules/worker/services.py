@@ -49,7 +49,6 @@ class WorkerService:
                     wo.deadline,
                     wo.description,
                     wo.source,
-                    wo.assigned_at,
                     wo.started_at,
                     wo.completed_at,
                     wo.created_at,
@@ -135,8 +134,8 @@ class WorkerService:
                     UPDATE work_orders
                     SET
                         status = 'in_progress',
-                        started_at = COALESCE(started_at, NOW()),
-                        updated_at = NOW()
+                        started_at = COALESCE(started_at, (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)),
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :work_order_id
                     """
                 ),
@@ -147,7 +146,7 @@ class WorkerService:
                 text(
                     """
                     UPDATE order_stages
-                    SET status = 'in_progress', updated_at = NOW()
+                    SET status = 'in_progress', updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :stage_id
                       AND status = 'not_started'
                     """
@@ -181,8 +180,8 @@ class WorkerService:
                     UPDATE work_orders
                     SET
                         status = 'completed',
-                        completed_at = NOW(),
-                        updated_at = NOW()
+                        completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :work_order_id
                     """
                 ),
@@ -204,7 +203,7 @@ class WorkerService:
                             :note_type,
                             :content,
                             :created_by,
-                            NOW()
+                            (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                         )
                         """
                     ),
@@ -312,9 +311,9 @@ class WorkerService:
                 SET
                     status = 'completed',
                     completion_type = 'auto',
-                    completed_at = NOW(),
+                    completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                     completed_by = NULL,
-                    updated_at = NOW()
+                    updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                 WHERE id = :stage_id
                   AND status <> 'completed'
                 """
@@ -425,7 +424,7 @@ class WorkerService:
                     SET
                         qty_on_hand = qty_on_hand - :qty,
                         qty_reserved = qty_reserved - :qty,
-                        updated_at = NOW()
+                        updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     WHERE id = :inventory_id
                     RETURNING qty_on_hand, qty_reserved, qty_locked
                     """
@@ -502,11 +501,12 @@ class WorkerService:
                 UPDATE orders
                 SET
                     status = 'completed',
-                    completed_at = NOW(),
-                    updated_at = NOW()
+                    completed_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                    updated_at = (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                 WHERE id = :order_id
                   AND status = 'in_progress'
                 """
             ),
             {"order_id": order_id},
         )
+

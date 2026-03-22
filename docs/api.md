@@ -19,6 +19,19 @@
 
 ---
 
+## 时间与时区规范
+
+为避免前后端和数据库出现时区偏差，系统统一采用以下规则：
+
+1. 业务时间统一以中国北京时间（`Asia/Shanghai`，UTC+8）为口径。
+2. 数据库存储类型统一为 `TIMESTAMP(0) WITHOUT TIME ZONE`，含义是“北京时间本地时间”。
+3. API 返回时间字符串统一为秒级格式：`YYYY-MM-DDTHH:mm:ss`（不带 `Z`）。
+4. 前端在解析此类字符串时，必须按北京时间语义解析，不得按浏览器本地时区默认推断。
+5. 认证例外：JWT 的 `exp` 采用 UTC 时间戳（标准做法），不纳入业务时间口径。
+
+
+---
+
 ## 认证接口 (Auth)
 
 ### 登录签发 Token
@@ -878,7 +891,6 @@ GET /api/admin/work-orders
       "source": "manual",
       "description": "先处理易碎品",
       "deadline": null,
-      "assigned_at": "2026-03-21T12:00:00",
       "started_at": "2026-03-21T12:05:00",
       "completed_at": null,
       "terminated_at": null,

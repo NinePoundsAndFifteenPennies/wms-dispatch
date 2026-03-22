@@ -346,7 +346,6 @@ class AdminWorkOrderListItemResponse(BaseModel):
     source: Literal["manual", "agent"]
     description: Optional[str] = None
     deadline: Optional[datetime] = None
-    assigned_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     terminated_at: Optional[datetime] = None

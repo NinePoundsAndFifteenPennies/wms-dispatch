@@ -159,7 +159,7 @@
         <el-descriptions-item label="状态">{{ workOrderStatusText(selectedWorkOrder.status) }}</el-descriptions-item>
         <el-descriptions-item label="优先级">{{ priorityText(selectedWorkOrder.priority) }}</el-descriptions-item>
         <el-descriptions-item label="调度员">{{ selectedWorkOrder.dispatcher_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="分配时间">{{ formatDate(selectedWorkOrder.assigned_at) }}</el-descriptions-item>
+        <el-descriptions-item label="派发时间">{{ formatDate(selectedWorkOrder.created_at) }}</el-descriptions-item>
         <el-descriptions-item label="截止时间">{{ formatDate(selectedWorkOrder.deadline) }}</el-descriptions-item>
       </el-descriptions>
 
@@ -187,6 +187,7 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { adminWorkOrdersApi } from '../../api/admin/workOrders'
 import { workerWorkOrdersApi } from '../../api/worker/workOrders'
+import { formatCnDateTime } from '../../utils/cnTime'
 
 const authStore = useAuthStore()
 const loading = ref(false)
@@ -293,7 +294,7 @@ function statusTagClass(status) {
 }
 
 function formatDate(value) {
-  return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+  return formatCnDateTime(value)
 }
 
 function openWorkOrderDetail(row) {

@@ -25,6 +25,7 @@ resources/
 3. 核心动作可审计：取消、终止、库存变更、审批结果必须可追溯。
 4. 高并发可实现：关键流程可通过事务 + 行级锁保证一致性。
 5. 时间字段统一为秒级精度（`TIMESTAMP(0)`），落库不保留微秒小数位，便于直接阅读与对账。
+6. 业务时间统一使用中国北京时间（`Asia/Shanghai`，UTC+8）；认证时间（JWT exp）允许使用 UTC。
 
 ---
 
@@ -296,7 +297,6 @@ resources/
 | description | TEXT | | 任务描述 |
 | source | VARCHAR(8) | NOT NULL, DEFAULT 'manual' | manual / agent |
 | agent_reason | TEXT | | AI分配理由 |
-| assigned_at | TIMESTAMP | | 分配时间 |
 | started_at | TIMESTAMP | | 开始时间 |
 | completed_at | TIMESTAMP | | 完成时间 |
 | terminated_at | TIMESTAMP | | 终止时间 |
@@ -304,6 +304,8 @@ resources/
 | termination_reason | TEXT | | 终止原因 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+
+说明：`work_orders.assigned_at` 已移除，工单派发时间统一以 `created_at` 为准。
 
 **一致性约束建议（推荐入库）**：
 - 增加 `orders(id, dispatcher_id)` 复合唯一约束。

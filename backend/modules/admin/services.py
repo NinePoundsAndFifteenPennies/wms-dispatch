@@ -169,7 +169,6 @@ class AdminService:
                     wo.source,
                     wo.description,
                     wo.deadline,
-                    wo.assigned_at,
                     wo.started_at,
                     wo.completed_at,
                     wo.terminated_at,
@@ -1002,7 +1001,7 @@ class AdminService:
         return {"items": items, "total": total}
 
     async def _next_order_no(self) -> str:
-        prefix = f"OD-{datetime.now().strftime('%y%m%d')}"
+        prefix = f"OD-{datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).strftime('%y%m%d')}"
         seq_result = await self.session.execute(
             text(
                 """

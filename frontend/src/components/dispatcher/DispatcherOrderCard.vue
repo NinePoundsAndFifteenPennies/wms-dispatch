@@ -14,6 +14,8 @@
 </template>
 
 <script setup>
+import { formatCnDateTime } from '../../utils/cnTime'
+
 const props = defineProps({
   order: {
     type: Object,
@@ -56,7 +58,7 @@ function priorityText(priority) {
 }
 
 function formatDate(value) {
-  return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+  return formatCnDateTime(value)
 }
 </script>
 

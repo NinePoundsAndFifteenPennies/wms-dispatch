@@ -45,3 +45,15 @@
 - **依赖注入挂载**：每个业务模块可有专属的 `dependencies.py`，用于给 Router 轻松生成相应的 Service 实例，且它通过挂接 SQLAlchemy AsyncSession 保障了每个独立网络请求只会拿到同一份活跃会话，防止了泄漏。
 - **静态资源服务**：应用在 `main.py` 中挂载 `/resources` 静态目录，图片等上传资源统一落在项目根 `resources/` 下按业务子目录管理。
 - **软删除展示约定**：客户与产品采用 `is_active` 状态开关模型，列表默认返回全部记录（包含停用项），由前端使用状态开关执行启停。
+
+---
+
+## 时间处理约定（新增）
+
+为彻底消除时区歧义，后端统一采用“北京时间语义 + 秒级精度”策略：
+
+1. 业务时间统一为 `Asia/Shanghai`。
+2. SQL 写时间推荐使用：`(NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)`。
+3. Python 层如需生成业务时间，必须显式使用 `ZoneInfo('Asia/Shanghai')`，并与数据库字段语义保持一致。
+4. `TIMESTAMP WITHOUT TIME ZONE` 字段按“北京时间本地时间”理解，禁止混入 UTC 业务时间写入。
+5. JWT `exp` 使用 UTC 是认证标准例外，不视为业务时间违规。

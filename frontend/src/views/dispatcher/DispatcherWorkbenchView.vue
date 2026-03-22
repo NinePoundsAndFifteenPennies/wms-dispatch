@@ -93,7 +93,7 @@
                   <div>
                     <strong>{{ work.worker_name }}</strong>
                     <p>{{ workOrderStatusText(work.status) }} · {{ priorityText(work.priority) }}</p>
-                    <p>开始 {{ timeText(work.started_at || work.assigned_at) }}</p>
+                    <p>开始 {{ timeText(work.started_at || work.created_at) }}</p>
                   </div>
                   <span class="status-tag" :class="`tag-${work.status}`">{{ workOrderStatusText(work.status) }}</span>
                 </article>
@@ -154,6 +154,12 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
+import {
+  compareCnDateDesc,
+  formatCnDateTime,
+  isCnOvertime,
+  minutesSinceCn,
+} from '../../utils/cnTime'
 
 const loading = ref(false)
 const queueMode = ref('in_progress')
@@ -174,7 +180,7 @@ const queueTabs = [
 const queueCatalog = computed(() => {
   const inProgress = myOrders.value.filter((item) => item.status === 'in_progress').length
   const pending = pendingOrders.value.length
-  const alert = myOrders.value.filter((item) => isOvertime(item.updated_at, 120)).length
+  const alert = myOrders.value.filter((item) => isCnOvertime(item.updated_at, 120)).length
   return {
     in_progress: inProgress,
     pending,
@@ -184,7 +190,7 @@ const queueCatalog = computed(() => {
 
 const queueList = computed(() => {
   if (queueMode.value === 'pending') return pendingOrders.value
-  if (queueMode.value === 'alert') return myOrders.value.filter((item) => isOvertime(item.updated_at, 120))
+  if (queueMode.value === 'alert') return myOrders.value.filter((item) => isCnOvertime(item.updated_at, 120))
   return myOrders.value.filter((item) => item.status === 'in_progress')
 })
 
@@ -220,7 +226,7 @@ const workerStatusRows = computed(() => {
     const latestByWorker = rows.reduce((acc, item) => {
       const key = item.worker_id
       const prev = acc[key]
-      if (!prev || new Date(item.updated_at).getTime() > new Date(prev.updated_at).getTime()) {
+      if (!prev || compareCnDateDesc(item.updated_at, prev.updated_at) < 0) {
         acc[key] = item
       }
       return acc
@@ -250,9 +256,9 @@ const timeline = computed(() => {
   if (detail.cancelled_at) lines.push({ timeRaw: detail.cancelled_at, text: `${detail.order_no} 已取消` })
 
   selectedOrderWorkOrders.value.forEach((item) => {
-    if (item.assigned_at) {
+    if (item.created_at) {
       lines.push({
-        timeRaw: item.assigned_at,
+        timeRaw: item.created_at,
         text: `${item.worker_name} 被派发 ${stageText(item.stage_type)} 工单`,
       })
     }
@@ -277,11 +283,11 @@ const timeline = computed(() => {
   })
 
   return lines
-    .sort((a, b) => new Date(b.timeRaw).getTime() - new Date(a.timeRaw).getTime())
+    .sort((a, b) => compareCnDateDesc(a.timeRaw, b.timeRaw))
     .slice(0, 8)
     .map((item) => ({
       text: item.text,
-      time: formatDateTime(item.timeRaw),
+      time: formatCnDateTime(item.timeRaw),
     }))
 })
 
@@ -310,8 +316,8 @@ async function fetchWorkbench() {
   loading.value = true
   try {
     const [myRes, pendingRes] = await Promise.all([dispatcherOrdersApi.getMyOrders(), dispatcherOrdersApi.getPendingOrders()])
-    myOrders.value = (myRes.data.items || []).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-    pendingOrders.value = (pendingRes.data.items || []).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    myOrders.value = (myRes.data.items || []).sort((a, b) => compareCnDateDesc(a.updated_at, b.updated_at))
+    pendingOrders.value = (pendingRes.data.items || []).sort((a, b) => compareCnDateDesc(a.updated_at, b.updated_at))
 
     const source = {}
     myOrders.value.forEach((item) => {
@@ -439,28 +445,14 @@ function workerStateText(workOrder) {
 
 function timeText(value) {
   if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  const now = Date.now()
-  const diffMinutes = Math.max(0, Math.floor((now - date.getTime()) / 60000))
+  const diffMinutes = minutesSinceCn(value)
+  if (Number.isNaN(diffMinutes)) return '-'
   if (diffMinutes < 1) return '刚刚'
   if (diffMinutes < 60) return `${diffMinutes}分钟前`
   const hours = Math.floor(diffMinutes / 60)
   if (hours < 24) return `${hours}小时前`
   const days = Math.floor(hours / 24)
   return `${days}天前`
-}
-
-function formatDateTime(value) {
-  if (!value) return '-'
-  return String(value).replace('T', ' ').slice(0, 19)
-}
-
-function isOvertime(value, minutes) {
-  if (!value) return false
-  const time = new Date(value).getTime()
-  if (Number.isNaN(time)) return false
-  return Date.now() - time >= minutes * 60 * 1000
 }
 
 function formatYuan(yuan) {

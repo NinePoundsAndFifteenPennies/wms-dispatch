@@ -63,6 +63,7 @@ import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
 import DispatcherOrderCard from '../../components/dispatcher/DispatcherOrderCard.vue'
 import PriorityOrderColumn from '../../components/dispatcher/PriorityOrderColumn.vue'
 import OrderSearchBox from '../../components/shared/OrderSearchBox.vue'
+import { compareCnDateAsc } from '../../utils/cnTime'
 
 const loading = ref(false)
 const orders = ref([])
@@ -114,7 +115,7 @@ const grouped = computed(() => {
   }
   for (const key of ['high', 'medium', 'low']) {
     groups[key].sort((a, b) => {
-      const diff = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+      const diff = compareCnDateAsc(a.updated_at, b.updated_at)
       return sortOrder[key] === 'asc' ? diff : -diff
     })
   }
