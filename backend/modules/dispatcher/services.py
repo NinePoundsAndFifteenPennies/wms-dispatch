@@ -4,12 +4,41 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.dispatcher.schemas import DispatcherCreateWorkOrderRequest
+from modules.dispatcher.schemas import (
+    DispatcherCreateWorkOrderRequest,
+    DispatcherSkillProductBreakdownResponse,
+    DispatcherWorkOrderPrecheckResponse,
+    DispatcherWorkOrderRiskResponse,
+)
+from modules.shared.config import settings
 
 
 class DispatcherService:
     def __init__(self, session: AsyncSession):
         self.session = session
+        self.active_work_order_limit = settings.dispatcher_active_work_order_limit
+
+    @staticmethod
+    def _stage_skill_column(stage_type: str):
+        mapping = {
+            "picking": "skill_picking",
+            "staging": "skill_staging",
+            "shipping": "skill_shipping",
+        }
+        if stage_type not in mapping:
+            raise HTTPException(status_code=400, detail="Invalid stage type")
+        return mapping[stage_type]
+
+    @staticmethod
+    def _stage_required_skill_column(stage_type: str):
+        mapping = {
+            "picking": "req_skill_picking",
+            "staging": "req_skill_staging",
+            "shipping": "req_skill_shipping",
+        }
+        if stage_type not in mapping:
+            raise HTTPException(status_code=400, detail="Invalid stage type")
+        return mapping[stage_type]
 
     def _build_order_filters(
         self,
@@ -209,6 +238,9 @@ class DispatcherService:
                     p.sku AS product_sku,
                     p.name AS product_name,
                     p.category AS product_category,
+                    p.req_skill_picking,
+                    p.req_skill_staging,
+                    p.req_skill_shipping,
                     oi.qty,
                     oi.unit_price,
                     (oi.qty * oi.unit_price)::INTEGER AS subtotal
@@ -948,15 +980,200 @@ class DispatcherService:
                     u.email,
                     u.skill_picking,
                     u.skill_staging,
-                    u.skill_shipping
+                    u.skill_shipping,
+                    COALESCE(wo.active_work_order_count, 0)::INTEGER AS active_work_order_count,
+                    CAST(:active_work_order_limit AS INTEGER) AS active_work_order_limit
                 FROM users u
+                LEFT JOIN (
+                    SELECT
+                        worker_id,
+                        COUNT(*)::INTEGER AS active_work_order_count
+                    FROM work_orders
+                    WHERE status IN ('pending', 'in_progress')
+                    GROUP BY worker_id
+                ) wo ON wo.worker_id = u.id
                 WHERE {' AND '.join(where)}
                 ORDER BY u.username ASC, u.id ASC
                 """
             ),
-            params,
+            {
+                **params,
+                "active_work_order_limit": self.active_work_order_limit,
+            },
         )
         return [dict(row) for row in result.mappings().all()]
+
+    async def _assess_work_order_assignment(self, order_id: int, user_id: int, stage_id: int, worker_id: int):
+        order_row = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
+        if order_row["status"] != "in_progress":
+            raise HTTPException(status_code=400, detail="Only in-progress orders can create work orders")
+
+        stage_result = await self.session.execute(
+            text(
+                """
+                SELECT id, order_id, stage_type, status
+                FROM order_stages
+                WHERE id = :stage_id
+                  AND order_id = :order_id
+                LIMIT 1
+                """
+            ),
+            {"stage_id": stage_id, "order_id": order_id},
+        )
+        stage_row = stage_result.mappings().first()
+        if not stage_row:
+            raise HTTPException(status_code=400, detail="Stage does not belong to the target order")
+        if stage_row["status"] == "completed":
+            raise HTTPException(status_code=400, detail="Stage is completed and locked for new work orders")
+
+        worker_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    role,
+                    warehouse_id,
+                    is_active,
+                    skill_picking,
+                    skill_staging,
+                    skill_shipping
+                FROM users
+                WHERE id = :worker_id
+                LIMIT 1
+                """
+            ),
+            {"worker_id": worker_id},
+        )
+        worker = worker_result.mappings().first()
+        if not worker or worker["role"] != "worker":
+            raise HTTPException(status_code=400, detail="Invalid worker")
+        if not worker["is_active"]:
+            raise HTTPException(status_code=400, detail="Worker is disabled")
+        if worker["warehouse_id"] != order_row["warehouse_id"]:
+            raise HTTPException(status_code=400, detail="Worker warehouse does not match order warehouse")
+
+        required_skill_column = self._stage_required_skill_column(stage_row["stage_type"])
+        skill_items_result = await self.session.execute(
+            text(
+                f"""
+                SELECT
+                    p.id AS product_id,
+                    p.sku AS product_sku,
+                    p.name AS product_name,
+                    p.{required_skill_column}::INTEGER AS required_skill
+                FROM order_items oi
+                JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = :order_id
+                GROUP BY p.id, p.sku, p.name, p.{required_skill_column}
+                ORDER BY p.id ASC
+                """
+            ),
+            {"order_id": order_id},
+        )
+        skill_items = [dict(row) for row in skill_items_result.mappings().all()]
+
+        required_skill_min = min((item["required_skill"] for item in skill_items), default=0)
+        required_skill_max = max((item["required_skill"] for item in skill_items), default=0)
+
+        worker_skill_column = self._stage_skill_column(stage_row["stage_type"])
+        worker_skill = int(worker[worker_skill_column])
+
+        if worker_skill < required_skill_min:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": (
+                        f"当前工人阶段技能({worker_skill})低于该阶段最低技能要求({required_skill_min})，禁止派单"
+                    ),
+                    "code": "worker_skill_below_stage_min",
+                    "required_skill_min": required_skill_min,
+                    "required_skill_max": required_skill_max,
+                    "worker_skill": worker_skill,
+                },
+            )
+
+        skill_products = []
+        for item in skill_items:
+            required_skill = int(item["required_skill"])
+            skill_products.append(
+                {
+                    "product_id": item["product_id"],
+                    "product_sku": item["product_sku"],
+                    "product_name": item["product_name"],
+                    "required_skill": required_skill,
+                    "worker_skill": worker_skill,
+                    "is_qualified": worker_skill >= required_skill,
+                }
+            )
+
+        active_count_result = await self.session.execute(
+            text(
+                """
+                SELECT COALESCE(COUNT(*), 0)::INTEGER
+                FROM work_orders
+                WHERE worker_id = :worker_id
+                  AND status IN ('pending', 'in_progress')
+                """
+            ),
+            {"worker_id": worker_id},
+        )
+        active_work_order_count = active_count_result.scalar_one() or 0
+
+        risks = []
+        if worker_skill < required_skill_max:
+            risks.append(
+                {
+                    "code": "skill_gap",
+                    "message": f"当前工人阶段技能({worker_skill})低于该阶段最高技能要求({required_skill_max})",
+                }
+            )
+        if active_work_order_count >= self.active_work_order_limit:
+            risks.append(
+                {
+                    "code": "worker_overload",
+                    "message": f"当前工人在途工单数({active_work_order_count})已达到上限({self.active_work_order_limit})",
+                }
+            )
+
+        return {
+            "order_row": order_row,
+            "stage_row": stage_row,
+            "worker": worker,
+            "required_skill_min": required_skill_min,
+            "required_skill_max": required_skill_max,
+            "worker_skill": worker_skill,
+            "active_work_order_count": active_work_order_count,
+            "risks": risks,
+            "skill_products": skill_products,
+        }
+
+    async def precheck_work_order_assignment(
+        self,
+        order_id: int,
+        user_id: int,
+        stage_id: int,
+        worker_id: int,
+    ) -> DispatcherWorkOrderPrecheckResponse:
+        assessment = await self._assess_work_order_assignment(
+            order_id=order_id,
+            user_id=user_id,
+            stage_id=stage_id,
+            worker_id=worker_id,
+        )
+        risks = [DispatcherWorkOrderRiskResponse(**item) for item in assessment["risks"]]
+        skill_products = [DispatcherSkillProductBreakdownResponse(**item) for item in assessment["skill_products"]]
+        return DispatcherWorkOrderPrecheckResponse(
+            stage_id=assessment["stage_row"]["id"],
+            stage_type=assessment["stage_row"]["stage_type"],
+            required_skill_min=assessment["required_skill_min"],
+            required_skill_max=assessment["required_skill_max"],
+            worker_skill=assessment["worker_skill"],
+            active_work_order_count=assessment["active_work_order_count"],
+            active_work_order_limit=self.active_work_order_limit,
+            has_risk=len(risks) > 0,
+            risks=risks,
+            skill_products=skill_products,
+        )
 
     async def _get_dispatcher_order(self, order_id: int, user_id: int):
         result = await self.session.execute(
@@ -1093,27 +1310,26 @@ class DispatcherService:
 
     async def create_work_order(self, order_id: int, user_id: int, payload: DispatcherCreateWorkOrderRequest):
         try:
-            order_row = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
-            if order_row["status"] != "in_progress":
-                raise HTTPException(status_code=400, detail="Only in-progress orders can create work orders")
-
-            stage_result = await self.session.execute(
-                text(
-                    """
-                    SELECT id, order_id, stage_type, status
-                    FROM order_stages
-                    WHERE id = :stage_id
-                      AND order_id = :order_id
-                    LIMIT 1
-                    """
-                ),
-                {"stage_id": payload.stage_id, "order_id": order_id},
+            assessment = await self._assess_work_order_assignment(
+                order_id=order_id,
+                user_id=user_id,
+                stage_id=payload.stage_id,
+                worker_id=payload.worker_id,
             )
-            stage_row = stage_result.mappings().first()
-            if not stage_row:
-                raise HTTPException(status_code=400, detail="Stage does not belong to the target order")
-            if stage_row["status"] == "completed":
-                raise HTTPException(status_code=400, detail="Stage is completed and locked for new work orders")
+            order_row = assessment["order_row"]
+            stage_row = assessment["stage_row"]
+            risks = assessment["risks"]
+
+            override_reason = (payload.override_reason or "").strip()
+            if risks and not override_reason:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "存在派单风险，必须填写强制派单原因",
+                        "risk_codes": [item["code"] for item in risks],
+                        "risks": risks,
+                    },
+                )
 
             previous_stage_type = {
                 "staging": "picking",
@@ -1139,24 +1355,11 @@ class DispatcherService:
                 previous_stage = previous_stage_result.mappings().first()
                 previous_stage_id = previous_stage["id"] if previous_stage else None
 
-            worker_result = await self.session.execute(
-                text(
-                    """
-                    SELECT id, role, warehouse_id, is_active
-                    FROM users
-                    WHERE id = :worker_id
-                    LIMIT 1
-                    """
-                ),
-                {"worker_id": payload.worker_id},
-            )
-            worker = worker_result.mappings().first()
-            if not worker or worker["role"] != "worker":
-                raise HTTPException(status_code=400, detail="Invalid worker")
-            if not worker["is_active"]:
-                raise HTTPException(status_code=400, detail="Worker is disabled")
-            if worker["warehouse_id"] != order_row["warehouse_id"]:
-                raise HTTPException(status_code=400, detail="Worker warehouse does not match order warehouse")
+            description = payload.description.strip() if payload.description else None
+            if risks:
+                risk_codes = ",".join(item["code"] for item in risks)
+                audit_prefix = f"[override][{risk_codes}] {override_reason}"
+                description = f"{audit_prefix}\n{description}" if description else audit_prefix
 
             insert_result = await self.session.execute(
                 text(
@@ -1201,7 +1404,7 @@ class DispatcherService:
                     "warehouse_id": order_row["warehouse_id"],
                     "priority": payload.priority,
                     "deadline": payload.deadline,
-                    "description": payload.description,
+                    "description": description,
                 },
             )
             new_row = insert_result.mappings().first()

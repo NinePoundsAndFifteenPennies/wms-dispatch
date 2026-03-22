@@ -24,6 +24,20 @@
       <el-descriptions-item label="订单备注" :span="3">{{ detail.description || '-' }}</el-descriptions-item>
     </el-descriptions>
 
+    <DetailInfoBlock title="订单明细" v-if="detail">
+      <el-table :data="detail.items || []" stripe>
+        <el-table-column prop="product_sku" label="SKU" width="130" />
+        <el-table-column prop="product_name" label="产品名称" min-width="200" />
+        <el-table-column prop="qty" label="数量" width="90" />
+        <el-table-column label="技能要求" min-width="260">
+          <template #default="{ row }">
+            拣{{ row.req_skill_picking }} / 备{{ row.req_skill_staging }} / 发{{ row.req_skill_shipping }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="unit_price" label="单价(元)" width="110" />
+      </el-table>
+    </DetailInfoBlock>
+
     <DetailInfoBlock title="阶段进度" v-if="detail">
       <el-table :data="detail.stages || []" stripe>
         <el-table-column label="阶段" min-width="120">
@@ -61,7 +75,7 @@
     <DetailInfoBlock title="创建工单" v-if="detail">
       <el-form :model="createForm" label-width="100px" class="create-form">
         <el-form-item label="阶段">
-          <el-select v-model="createForm.stage_id" placeholder="选择阶段" class="w-full">
+          <el-select v-model="createForm.stage_id" placeholder="选择阶段" class="w-full" @change="handleAssignmentSelectionChange">
             <el-option
               v-for="stage in detail.stages || []"
               :key="stage.id"
@@ -71,14 +85,35 @@
           </el-select>
         </el-form-item>
         <el-form-item label="工人">
-          <el-select v-model="createForm.worker_id" filterable placeholder="选择工人" class="w-full">
+          <el-select
+            v-model="createForm.worker_id"
+            filterable
+            placeholder="选择工人"
+            class="w-full"
+            @change="handleAssignmentSelectionChange"
+            :no-data-text="workerSelectNoDataText"
+          >
             <el-option
-              v-for="worker in workers"
+              v-for="worker in filteredWorkers"
               :key="worker.id"
-              :label="`${worker.username}（拣${worker.skill_picking}/备${worker.skill_staging}/发${worker.skill_shipping}）`"
+              :label="`${worker.username}（拣${worker.skill_picking}/备${worker.skill_staging}/发${worker.skill_shipping}｜在途${worker.active_work_order_count}/${worker.active_work_order_limit || 5}）`"
               :value="worker.id"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="派单风险" v-if="selectedStageDetail || selectedWorker">
+          <div class="risk-hint-box">
+            <p>
+              当前阶段：{{ selectedStageDetail ? stageText(selectedStageDetail.stage_type) : '-' }}，阶段技能范围：
+              {{ selectedStageRequiredSkillRange }}
+            </p>
+            <p>
+              当前工人阶段技能：{{ selectedWorkerSkill }}，在途工单：{{ selectedWorkerLoad }}/{{ selectedWorkerLoadLimit }}
+            </p>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="assignmentPrecheck?.has_risk">
+          <p class="risk-inline-tip">检测到派单风险，点击“创建工单”将直接进入风险确认弹窗。</p>
         </el-form-item>
         <el-form-item label="优先级">
           <el-select v-model="createForm.priority" class="w-full">
@@ -87,11 +122,18 @@
             <el-option label="低" value="low" />
           </el-select>
         </el-form-item>
-        <el-form-item label="任务备注">
+        <el-form-item label="任务备注" v-if="!assignmentPrecheck?.has_risk">
           <el-input v-model="createForm.description" type="textarea" :rows="2" placeholder="选填，说明执行要求" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="creatingWorkOrder" @click="submitCreateWorkOrder">创建工单</el-button>
+          <el-button
+            type="primary"
+            :loading="creatingWorkOrder"
+            :disabled="filteredWorkers.length === 0"
+            @click="submitCreateWorkOrder"
+          >
+            创建工单
+          </el-button>
           <el-button @click="resetCreateForm">重置</el-button>
         </el-form-item>
       </el-form>
@@ -161,11 +203,47 @@
         <el-button type="danger" :loading="cancelSubmitting" @click="submitCancelOrder">确认取消</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="assignmentRiskDialogVisible" title="派单风险确认" width="560px">
+      <p class="summary-text" v-if="assignmentPrecheck">
+        阶段：{{ stageText(assignmentPrecheck.stage_type) }}，工人阶段技能：{{ assignmentPrecheck.worker_skill }}，阶段技能范围：
+        {{ assignmentPrecheck.required_skill_min }} - {{ assignmentPrecheck.required_skill_max }}
+      </p>
+      <ul class="risk-list" v-if="assignmentPrecheck?.risks?.length">
+        <li v-for="risk in assignmentPrecheck.risks" :key="risk.code">{{ formatRiskMessage(risk) }}</li>
+      </ul>
+      <div v-if="assignmentPrecheck?.skill_products?.length && hasSkillGapRisk" class="skill-products-box">
+        <p class="summary-text">技能匹配明细（便于备注说明）</p>
+        <el-table :data="assignmentPrecheck.skill_products" size="small" border>
+          <el-table-column prop="product_sku" label="SKU" min-width="120" />
+          <el-table-column prop="product_name" label="产品" min-width="160" />
+          <el-table-column prop="required_skill" label="需求技能" width="90" />
+          <el-table-column prop="worker_skill" label="工人技能" width="90" />
+          <el-table-column label="结果" width="90">
+            <template #default="{ row }">
+              <span :class="row.is_qualified ? 'skill-ok' : 'skill-bad'">{{ row.is_qualified ? '够' : '不够' }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <el-input
+        v-model="overrideReason"
+        type="textarea"
+        :rows="3"
+        maxlength="500"
+        show-word-limit
+        placeholder="存在风险时必须填写强制派单原因"
+      />
+      <template #footer>
+        <el-button @click="assignmentRiskDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="creatingWorkOrder" @click="submitCreateWorkOrderWithOverride">确认强制派单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
@@ -184,11 +262,14 @@ const stageCompleteSubmitting = ref(false)
 const manualCompleteVisible = ref(false)
 const cancelDialogVisible = ref(false)
 const cancelSubmitting = ref(false)
+const assignmentRiskDialogVisible = ref(false)
 const selectedStage = ref(null)
 const selectedWorkOrderId = ref(null)
 const terminateReason = ref('')
 const manualCompleteRemark = ref('')
 const cancelReason = ref('')
+const assignmentPrecheck = ref(null)
+const overrideReason = ref('')
 
 const createForm = ref({
   stage_id: null,
@@ -196,6 +277,100 @@ const createForm = ref({
   priority: 'medium',
   description: '',
 })
+
+const selectedStageDetail = computed(() => {
+  return (detail.value?.stages || []).find((item) => item.id === createForm.value.stage_id) || null
+})
+
+const selectedStageSkillBounds = computed(() => {
+  if (!selectedStageDetail.value || !Array.isArray(detail.value?.items)) {
+    return { min: 0, max: 0 }
+  }
+  const keyMap = {
+    picking: 'req_skill_picking',
+    staging: 'req_skill_staging',
+    shipping: 'req_skill_shipping',
+  }
+  const key = keyMap[selectedStageDetail.value.stage_type]
+  const levels = (detail.value.items || []).map((item) => Number(item[key] || 0))
+  if (!levels.length) {
+    return { min: 0, max: 0 }
+  }
+  return { min: Math.min(...levels), max: Math.max(...levels) }
+})
+
+const filteredWorkers = computed(() => {
+  if (!selectedStageDetail.value) {
+    return workers.value || []
+  }
+  const keyMap = {
+    picking: 'skill_picking',
+    staging: 'skill_staging',
+    shipping: 'skill_shipping',
+  }
+  const skillKey = keyMap[selectedStageDetail.value.stage_type]
+  const minRequired = selectedStageSkillBounds.value.min
+  return (workers.value || []).filter((worker) => Number(worker[skillKey] || 0) >= minRequired)
+})
+
+const selectedWorker = computed(() => {
+  return (workers.value || []).find((item) => item.id === createForm.value.worker_id) || null
+})
+
+const selectedStageRequiredSkillRange = computed(() => {
+  const min = selectedStageSkillBounds.value.min
+  const max = selectedStageSkillBounds.value.max
+  return min === max ? `${min}` : `${min} - ${max}`
+})
+
+const selectedWorkerSkill = computed(() => {
+  if (!selectedStageDetail.value || !selectedWorker.value) return '-'
+  const keyMap = {
+    picking: 'skill_picking',
+    staging: 'skill_staging',
+    shipping: 'skill_shipping',
+  }
+  return selectedWorker.value[keyMap[selectedStageDetail.value.stage_type]]
+})
+
+const selectedWorkerLoad = computed(() => selectedWorker.value?.active_work_order_count ?? '-')
+const selectedWorkerLoadLimit = computed(() => {
+  if (assignmentPrecheck.value?.active_work_order_limit) return assignmentPrecheck.value.active_work_order_limit
+  return selectedWorker.value?.active_work_order_limit ?? 5
+})
+
+const hasSkillGapRisk = computed(() => {
+  return (assignmentPrecheck.value?.risks || []).some((item) => item.code === 'skill_gap')
+})
+
+const workerSelectNoDataText = computed(() => {
+  if (!selectedStageDetail.value) {
+    return '请先选择阶段'
+  }
+  return '当前阶段暂无满足最低技能要求的可派工人'
+})
+
+function formatRiskMessage(risk) {
+  const fallback = risk?.message || '存在派单风险'
+  if (!risk?.code) return fallback
+
+  const map = {
+    skill_gap: '技能不足：当前工人技能未达到该阶段需求，建议更换工人或填写强制派单原因。',
+    worker_overload: '负载超限：当前工人在途工单已达上限，建议分配给其他工人或填写强制派单原因。',
+  }
+  return map[risk.code] || fallback
+}
+
+function ensureValidWorkerSelection() {
+  if (!createForm.value.stage_id) {
+    createForm.value.worker_id = null
+    return
+  }
+  const allowedIds = new Set(filteredWorkers.value.map((item) => item.id))
+  if (!allowedIds.has(createForm.value.worker_id)) {
+    createForm.value.worker_id = filteredWorkers.value[0]?.id || null
+  }
+}
 
 async function fetchDetail() {
   loading.value = true
@@ -214,9 +389,8 @@ async function fetchDetail() {
     if (!createForm.value.stage_id && firstStage) {
       createForm.value.stage_id = firstStage.id
     }
-    if (!createForm.value.worker_id && workers.value.length > 0) {
-      createForm.value.worker_id = workers.value[0].id
-    }
+    ensureValidWorkerSelection()
+    await handleAssignmentSelectionChange()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || '获取订单详情失败，请稍后重试')
   } finally {
@@ -280,10 +454,14 @@ function workOrderStatusText(status) {
 function resetCreateForm() {
   createForm.value = {
     stage_id: detail.value?.stages?.find((item) => item.status !== 'completed')?.id || null,
-    worker_id: workers.value?.[0]?.id || null,
+    worker_id: null,
     priority: 'medium',
     description: '',
   }
+  ensureValidWorkerSelection()
+  assignmentPrecheck.value = null
+  overrideReason.value = ''
+  handleAssignmentSelectionChange()
 }
 
 async function submitCreateWorkOrder() {
@@ -292,6 +470,60 @@ async function submitCreateWorkOrder() {
     return
   }
 
+  try {
+    const precheckRes = await dispatcherOrdersApi.precheckWorkOrder(route.params.orderId, {
+      stage_id: createForm.value.stage_id,
+      worker_id: createForm.value.worker_id,
+    })
+    assignmentPrecheck.value = precheckRes.data
+    if (assignmentPrecheck.value?.has_risk) {
+      overrideReason.value = ''
+      assignmentRiskDialogVisible.value = true
+      return
+    }
+  } catch (error) {
+    const detailMessage = error?.response?.data?.detail
+    const message =
+      error?.response?.data?.message ||
+      (typeof detailMessage === 'string' ? detailMessage : detailMessage?.message) ||
+      '派单预校验失败'
+    ElMessage.error(message)
+    return
+  }
+
+  await performCreateWorkOrder()
+}
+
+async function handleAssignmentSelectionChange() {
+  ensureValidWorkerSelection()
+  if (!createForm.value.stage_id || !createForm.value.worker_id) {
+    assignmentPrecheck.value = null
+    return
+  }
+
+  try {
+    const precheckRes = await dispatcherOrdersApi.precheckWorkOrder(route.params.orderId, {
+      stage_id: createForm.value.stage_id,
+      worker_id: createForm.value.worker_id,
+    })
+    assignmentPrecheck.value = precheckRes.data
+    if (assignmentPrecheck.value?.has_risk) {
+      createForm.value.description = ''
+    }
+  } catch {
+    assignmentPrecheck.value = null
+  }
+}
+
+async function submitCreateWorkOrderWithOverride() {
+  if (!overrideReason.value.trim()) {
+    ElMessage.warning('存在风险时必须填写强制派单原因')
+    return
+  }
+  await performCreateWorkOrder(overrideReason.value.trim())
+}
+
+async function performCreateWorkOrder(forceReason = null) {
   creatingWorkOrder.value = true
   try {
     await dispatcherOrdersApi.createWorkOrder(route.params.orderId, {
@@ -299,10 +531,19 @@ async function submitCreateWorkOrder() {
       worker_id: createForm.value.worker_id,
       priority: createForm.value.priority,
       description: createForm.value.description || null,
+      override_reason: forceReason,
     })
+    assignmentRiskDialogVisible.value = false
     ElMessage.success('工单创建成功')
     resetCreateForm()
     await fetchDetail()
+  } catch (error) {
+    const detailMessage = error?.response?.data?.detail
+    const message =
+      error?.response?.data?.message ||
+      (typeof detailMessage === 'string' ? detailMessage : detailMessage?.message) ||
+      '工单创建失败'
+    ElMessage.error(message)
   } finally {
     creatingWorkOrder.value = false
   }
@@ -427,6 +668,46 @@ onMounted(fetchDetail)
 
 .summary-text {
   margin: 0;
+}
+
+.risk-list {
+  margin: 10px 0;
+  padding-left: 18px;
+  color: #6a5338;
+}
+
+.risk-hint-box {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  color: #6a5338;
+  font-size: 13px;
+}
+
+.risk-hint-box p {
+  margin: 0;
+}
+
+.risk-inline-tip {
+  margin: 0;
+  color: #b54708;
+  font-size: 13px;
+}
+
+.skill-products-box {
+  margin-bottom: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.skill-ok {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.skill-bad {
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .create-form {

@@ -51,7 +51,45 @@
       <el-button @click="resetFilters">重置</el-button>
     </section>
 
-    <el-table :data="tableRows" stripe>
+    <section v-if="isWorker" class="worker-card-grid">
+      <el-empty v-if="tableRows.length === 0" description="暂无匹配工单" :image-size="96" />
+      <article
+        v-for="row in tableRows"
+        :key="row.id"
+        class="worker-order-card"
+        @click="openWorkOrderDetail(row)"
+      >
+        <header class="card-head">
+          <strong>#{{ row.id }} · {{ row.order_no }}</strong>
+          <el-tag :class="statusTagClass(row.status)" effect="light" round>{{ workOrderStatusText(row.status) }}</el-tag>
+        </header>
+        <p class="card-line">阶段：{{ stageText(row.stage_type) }} ｜ 优先级：{{ priorityText(row.priority) }}</p>
+        <p class="card-line">调度员：{{ row.dispatcher_name || '-' }}</p>
+        <p class="card-line">截止：{{ formatDate(row.deadline) }}</p>
+        <footer class="card-actions">
+          <el-button
+            size="small"
+            type="primary"
+            plain
+            :disabled="row.status !== 'pending' || submitting"
+            @click.stop="startWorkOrder(row)"
+          >
+            接单开始
+          </el-button>
+          <el-button
+            size="small"
+            type="success"
+            plain
+            :disabled="row.status !== 'in_progress' || submitting"
+            @click.stop="openCompleteDialog(row)"
+          >
+            完成工单
+          </el-button>
+        </footer>
+      </article>
+    </section>
+
+    <el-table v-else :data="tableRows" stripe>
       <el-table-column prop="id" label="工单ID" width="90" />
       <el-table-column prop="order_no" label="订单号" min-width="120" />
       <el-table-column label="阶段" min-width="100">
@@ -73,28 +111,6 @@
       <el-table-column prop="description" label="备注" min-width="180" show-overflow-tooltip />
       <el-table-column label="更新时间" min-width="170">
         <template #default="{ row }">{{ formatDate(row.updated_at) }}</template>
-      </el-table-column>
-      <el-table-column v-if="isWorker" label="操作" width="220">
-        <template #default="{ row }">
-          <el-button
-            size="small"
-            type="primary"
-            plain
-            :disabled="row.status !== 'pending' || submitting"
-            @click="startWorkOrder(row)"
-          >
-            开始
-          </el-button>
-          <el-button
-            size="small"
-            type="success"
-            plain
-            :disabled="row.status !== 'in_progress' || submitting"
-            @click="openCompleteDialog(row)"
-          >
-            完成
-          </el-button>
-        </template>
       </el-table-column>
     </el-table>
 
@@ -134,6 +150,34 @@
         <el-button type="success" :loading="submitting" @click="completeWorkOrder">确认完成</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="workerDetailVisible" title="工单详情" width="720px">
+      <el-descriptions v-if="selectedWorkOrder" :column="2" border>
+        <el-descriptions-item label="工单ID">{{ selectedWorkOrder.id }}</el-descriptions-item>
+        <el-descriptions-item label="订单号">{{ selectedWorkOrder.order_no }}</el-descriptions-item>
+        <el-descriptions-item label="阶段">{{ stageText(selectedWorkOrder.stage_type) }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ workOrderStatusText(selectedWorkOrder.status) }}</el-descriptions-item>
+        <el-descriptions-item label="优先级">{{ priorityText(selectedWorkOrder.priority) }}</el-descriptions-item>
+        <el-descriptions-item label="调度员">{{ selectedWorkOrder.dispatcher_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="分配时间">{{ formatDate(selectedWorkOrder.assigned_at) }}</el-descriptions-item>
+        <el-descriptions-item label="截止时间">{{ formatDate(selectedWorkOrder.deadline) }}</el-descriptions-item>
+      </el-descriptions>
+
+      <div v-if="selectedWorkOrder && parsedOverrideInfo.hasOverride" class="override-box">
+        <p class="override-title">风险放行信息</p>
+        <p>风险类型：{{ parsedOverrideInfo.riskLabels.join(' / ') || '-' }}</p>
+        <p>放行原因：{{ parsedOverrideInfo.overrideReason || '-' }}</p>
+      </div>
+
+      <div class="extra-box" v-if="selectedWorkOrder">
+        <p class="override-title">备注详情</p>
+        <p>{{ parsedOverrideInfo.remarkText || '无备注' }}</p>
+      </div>
+
+      <template #footer>
+        <el-button @click="workerDetailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -154,6 +198,8 @@ const pageSize = ref(20)
 const completeDialogVisible = ref(false)
 const selectedWorkOrderId = ref(null)
 const completeForm = ref({ note_type: 'normal', content: '' })
+const workerDetailVisible = ref(false)
+const selectedWorkOrder = ref(null)
 
 const filters = reactive({
   search: '',
@@ -170,6 +216,47 @@ const tableRows = computed(() => workOrders.value)
 const searchPlaceholder = computed(() =>
   isAdmin.value ? '搜索 工单ID/订单号/仓库/工人/调度员' : '搜索 工单ID/订单号/调度员'
 )
+
+const parsedOverrideInfo = computed(() => {
+  const raw = String(selectedWorkOrder.value?.description || '').trim()
+  if (!raw) {
+    return {
+      hasOverride: false,
+      riskCodes: [],
+      riskLabels: [],
+      overrideReason: '',
+      remarkText: '',
+    }
+  }
+
+  const matched = raw.match(/^\[override\]\[([^\]]+)\]\s*([^\n]*)(?:\n([\s\S]*))?$/)
+  if (!matched) {
+    return {
+      hasOverride: false,
+      riskCodes: [],
+      riskLabels: [],
+      overrideReason: '',
+      remarkText: raw,
+    }
+  }
+
+  const riskCodeMap = {
+    skill_gap: '技能风险',
+    worker_overload: '负载风险',
+  }
+  const riskCodes = (matched[1] || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return {
+    hasOverride: true,
+    riskCodes,
+    riskLabels: riskCodes.map((item) => riskCodeMap[item] || item),
+    overrideReason: (matched[2] || '').trim(),
+    remarkText: (matched[3] || '').trim(),
+  }
+})
 
 function stageText(stage) {
   return {
@@ -207,6 +294,11 @@ function statusTagClass(status) {
 
 function formatDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+}
+
+function openWorkOrderDetail(row) {
+  selectedWorkOrder.value = row
+  workerDetailVisible.value = true
 }
 
 function sanitizePositiveInt(value) {
@@ -357,6 +449,65 @@ p {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.worker-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+.worker-order-card {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fcfb 100%);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(22, 32, 42, 0.05);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+  border-left: 4px solid var(--brand);
+}
+
+.worker-order-card:hover {
+  box-shadow: 0 10px 22px rgba(17, 114, 100, 0.14);
+  border-color: #b7d8d2;
+  transform: translateY(-1px);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-line {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.override-box,
+.extra-box {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: #f8fbfd;
+  color: var(--ink-normal);
+}
+
+.override-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--ink-strong);
 }
 
 :deep(.el-tag.tag-pending) {

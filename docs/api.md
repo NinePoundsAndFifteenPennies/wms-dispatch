@@ -693,8 +693,65 @@ GET /api/dispatcher/workers?search=关键词
 **说明：**
 - 仅返回当前调度员所属仓库下的 `worker` 角色用户。
 - 返回字段包含三阶段技能：`skill_picking/skill_staging/skill_shipping`。
+- 返回字段新增：
+  - `active_work_order_count`：工人当前在途工单数（`pending + in_progress`）
+  - `active_work_order_limit`：在途工单阈值（读取后端配置 `DISPATCHER_ACTIVE_WORK_ORDER_LIMIT`）
 
-### 9) 调度员订单工单列表
+### 9) 调度员派单预校验（新增）
+
+```http
+POST /api/dispatcher/orders/{order_id}/work-orders/precheck
+```
+
+**请求体 (JSON)：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| stage_id | int | 是 | 订单阶段 ID |
+| worker_id | int | 是 | 工人 ID |
+
+**成功响应示例：**
+
+```json
+{
+  "stage_id": 21,
+  "stage_type": "picking",
+  "required_skill_min": 2,
+  "required_skill_max": 6,
+  "worker_skill": 4,
+  "active_work_order_count": 5,
+  "active_work_order_limit": 5,
+  "has_risk": true,
+  "risks": [
+    {
+      "code": "skill_gap",
+      "message": "当前工人阶段技能(4)低于该阶段最高技能要求(6)"
+    },
+    {
+      "code": "worker_overload",
+      "message": "当前工人在途工单数(5)已达到上限(5)"
+    }
+  ],
+  "skill_products": [
+    {
+      "product_id": 8,
+      "product_sku": "SKU-10086",
+      "product_name": "标准纸箱",
+      "required_skill": 6,
+      "worker_skill": 4,
+      "is_qualified": false
+    }
+  ]
+}
+```
+
+**说明：**
+- 若 `worker_skill < required_skill_min`，后端返回 `400`，该工人禁止派单。
+- 若 `required_skill_min <= worker_skill < required_skill_max`，返回技能风险（`skill_gap`），允许强制派单。
+- 若 `worker_skill >= required_skill_max`，技能维度无风险。
+- 负载风险判定：`active_work_order_count >= active_work_order_limit`。
+
+### 10) 调度员订单工单列表
 
 ```http
 GET /api/dispatcher/orders/{order_id}/work-orders?stage_id=12&status=in_progress
@@ -711,7 +768,7 @@ GET /api/dispatcher/orders/{order_id}/work-orders?stage_id=12&status=in_progress
 - 仅允许访问当前调度员本人订单。
 - 返回结构：`{ items: DispatcherOrderWorkOrderResponse[], total: number }`。
 
-### 10) 调度员创建工单
+### 11) 调度员创建工单
 
 ```http
 POST /api/dispatcher/orders/{order_id}/work-orders
@@ -726,11 +783,16 @@ POST /api/dispatcher/orders/{order_id}/work-orders
 | priority | string | 否 | `high \| medium \| low`，默认 `medium` |
 | deadline | string(datetime) | 否 | 截止时间 |
 | description | string | 否 | 工单备注 |
+| override_reason | string | 否 | 存在风险时必填；强制派单原因 |
 
 **说明：**
 - 遵循阶段串行与关门规则：已完成阶段不能新建工单，下一阶段需上一阶段完成后才可创建。
+- 若预校验存在风险且未传 `override_reason`，创建接口返回 `400`。
+- 风险放行时，系统会将结构化审计前缀写入 `description`，格式：
+  - `[override][skill_gap,worker_overload] 强制原因文本`
+  - 若同时填写普通备注，普通备注会换行追加在前缀后。
 
-### 11) 调度员终止工单
+### 12) 调度员终止工单
 
 ```http
 PATCH /api/dispatcher/work-orders/{work_order_id}/terminate
@@ -742,7 +804,7 @@ PATCH /api/dispatcher/work-orders/{work_order_id}/terminate
 |------|------|------|------|
 | reason | string | 是 | 终止原因，长度 1~500 |
 
-### 12) 调度员手动标记阶段完成
+### 13) 调度员手动标记阶段完成
 
 ```http
 POST /api/dispatcher/orders/{order_id}/stages/{stage_id}/complete
@@ -757,7 +819,7 @@ POST /api/dispatcher/orders/{order_id}/stages/{stage_id}/complete
 **说明：**
 - 返回最新订单详情对象。
 
-### 13) 我的订单列表参数补充（变更）
+### 14) 我的订单列表参数补充（变更）
 
 ```http
 GET /api/dispatcher/my-orders?search=关键词&status=completed
@@ -880,6 +942,9 @@ GET /api/worker/work-orders?status=in_progress
 
 **说明：**
 - 仅返回当前登录工人的工单（后端按 `worker_id = current_user.id` 强约束）。
+- 当工单由调度员风险放行创建时，`description` 可能包含结构化前缀：
+  - `[override][risk_codes] override_reason`。
+  前端应在工单详情中展示该结构化信息（风险类型、放行原因）以及备注正文。
 
 ### 2) 开始工单
 

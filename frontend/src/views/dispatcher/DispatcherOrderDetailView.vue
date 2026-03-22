@@ -24,6 +24,11 @@
         <el-table-column prop="product_sku" label="SKU" width="130" />
         <el-table-column prop="product_name" label="产品名称" min-width="200" />
         <el-table-column prop="qty" label="数量" width="90" />
+        <el-table-column label="技能要求" min-width="260">
+          <template #default="{ row }">
+            拣{{ row.req_skill_picking }} / 备{{ row.req_skill_staging }} / 发{{ row.req_skill_shipping }}
+          </template>
+        </el-table-column>
         <el-table-column prop="unit_price" label="单价(元)" width="110" />
       </el-table>
     </DetailInfoBlock>

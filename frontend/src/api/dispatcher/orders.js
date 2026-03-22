@@ -41,6 +41,10 @@ export const dispatcherOrdersApi = {
     return http.post(`/dispatcher/orders/${orderId}/work-orders`, payload)
   },
 
+  precheckWorkOrder(orderId, payload) {
+    return http.post(`/dispatcher/orders/${orderId}/work-orders/precheck`, payload)
+  },
+
   terminateWorkOrder(workOrderId, payload) {
     return http.patch(`/dispatcher/work-orders/${workOrderId}/terminate`, payload)
   },

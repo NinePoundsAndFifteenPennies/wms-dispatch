@@ -12,6 +12,7 @@ CompletionType = Literal["auto", "manual"]
 WorkOrderStatus = Literal["pending", "in_progress", "completed", "terminated"]
 WorkOrderSource = Literal["manual", "agent"]
 WorkOrderNoteType = Literal["normal", "damaged", "qty_mismatch", "other"]
+AssignmentRiskCode = Literal["skill_gap", "worker_overload"]
 
 
 class DispatcherOrderListItemResponse(BaseModel):
@@ -46,6 +47,9 @@ class DispatcherOrderDetailItemResponse(BaseModel):
     product_sku: str
     product_name: str
     product_category: Optional[str] = None
+    req_skill_picking: int
+    req_skill_staging: int
+    req_skill_shipping: int
     qty: int
     unit_price: int
     subtotal: int
@@ -156,6 +160,27 @@ class DispatcherWorkerOptionResponse(BaseModel):
     skill_picking: int
     skill_staging: int
     skill_shipping: int
+    active_work_order_count: int = 0
+    active_work_order_limit: int = 5
+
+
+class DispatcherWorkOrderPrecheckRequest(BaseModel):
+    stage_id: int
+    worker_id: int
+
+
+class DispatcherWorkOrderRiskResponse(BaseModel):
+    code: AssignmentRiskCode
+    message: str
+
+
+class DispatcherSkillProductBreakdownResponse(BaseModel):
+    product_id: int
+    product_sku: str
+    product_name: str
+    required_skill: int
+    worker_skill: int
+    is_qualified: bool
 
 
 class DispatcherCreateWorkOrderRequest(BaseModel):
@@ -164,6 +189,20 @@ class DispatcherCreateWorkOrderRequest(BaseModel):
     priority: OrderPriority = "medium"
     deadline: Optional[datetime] = None
     description: Optional[str] = None
+    override_reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class DispatcherWorkOrderPrecheckResponse(BaseModel):
+    stage_id: int
+    stage_type: StageType
+    required_skill_min: int
+    required_skill_max: int
+    worker_skill: int
+    active_work_order_count: int
+    active_work_order_limit: int
+    has_risk: bool
+    risks: List[DispatcherWorkOrderRiskResponse]
+    skill_products: List[DispatcherSkillProductBreakdownResponse] = Field(default_factory=list)
 
 
 class DispatcherTerminateWorkOrderRequest(BaseModel):

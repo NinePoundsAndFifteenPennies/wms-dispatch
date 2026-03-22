@@ -14,6 +14,8 @@ from modules.dispatcher.schemas import (
     DispatcherOrderWorkOrderListResponse,
     DispatcherOrderWorkOrderResponse,
     DispatcherTerminateWorkOrderRequest,
+    DispatcherWorkOrderPrecheckRequest,
+    DispatcherWorkOrderPrecheckResponse,
     DispatcherWorkerOptionResponse,
     DispatcherWarehouseInventoryResponse,
 )
@@ -172,6 +174,21 @@ async def create_order_work_order(
         order_id=order_id,
         user_id=current_user.get("id"),
         payload=payload,
+    )
+
+
+@router.post("/orders/{order_id}/work-orders/precheck", response_model=DispatcherWorkOrderPrecheckResponse)
+async def precheck_order_work_order(
+    order_id: int,
+    payload: DispatcherWorkOrderPrecheckRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.precheck_work_order_assignment(
+        order_id=order_id,
+        user_id=current_user.get("id"),
+        stage_id=payload.stage_id,
+        worker_id=payload.worker_id,
     )
 
 

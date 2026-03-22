@@ -119,3 +119,37 @@
 
 技能等级为 0-10 之间的整数，0代表不会，数值越大代表技能越熟练。调度算法优先匹配技能等级满足要求且等级差距最小的工人。
 
+### 7.1 调度员手动派单技能口径（新增约束）
+
+对“当前要派发的阶段”计算该订单的阶段技能需求区间：
+
+- `required_skill_min`：该订单所有商品在当前阶段需求技能的最小值
+- `required_skill_max`：该订单所有商品在当前阶段需求技能的最大值
+
+派单判定规则：
+
+- **硬拦截**：`worker_skill < required_skill_min` 时，禁止派单（前后端都必须拦截）。
+- **风险可放行**：`required_skill_min <= worker_skill < required_skill_max` 时，允许派单但必须走风险确认流程。
+- **正常通过**：`worker_skill >= required_skill_max` 时，技能维度无风险。
+
+> 说明：该规则是“阶段维度”的技能判断，不要求工人在其他阶段技能也达标。
+
+### 7.2 工人负载风险口径（新增约束）
+
+调度员派单时，工人负载按 `pending + in_progress` 统计。
+
+- 当 `active_work_order_count >= active_work_order_limit` 时，触发负载风险（`worker_overload`）。
+- 负载风险不做硬拦截，允许调度员强制放行。
+- `active_work_order_limit` 由配置项控制（默认 5）。
+
+### 7.3 风险放行审计（新增约束）
+
+当派单存在技能风险或负载风险并被强制放行时：
+
+- 调度员必须填写 `override_reason`。
+- 系统将风险类型与放行原因写入工单备注结构化前缀：
+  - `[override][risk_codes] override_reason`
+- 若存在普通备注，普通备注以换行形式追加在结构化前缀后。
+
+工人端工单详情必须能够看到结构化信息（风险类型、放行原因）与备注正文，确保执行环节信息对称。
+

@@ -13,6 +13,7 @@ class Settings:
     jwt_secret_key: str = os.getenv('JWT_SECRET_KEY', 'wms-dispatch-dev-secret')
     jwt_algorithm: str = os.getenv('JWT_ALGORITHM', 'HS256')
     jwt_expire_hours: int = int(os.getenv('JWT_EXPIRE_HOURS', '24'))
+    dispatcher_active_work_order_limit: int = int(os.getenv('DISPATCHER_ACTIVE_WORK_ORDER_LIMIT', '5'))
 
     def __init__(self) -> None:
         if not self.database_url:
@@ -24,6 +25,8 @@ class Settings:
             raise RuntimeError('DATABASE_URL is invalid: missing hostname')
         if not parsed.path or parsed.path.strip('/') == '':
             raise RuntimeError('DATABASE_URL is invalid: missing database name')
+        if self.dispatcher_active_work_order_limit < 1:
+            raise RuntimeError('DISPATCHER_ACTIVE_WORK_ORDER_LIMIT must be >= 1')
 
 
 settings = Settings()
