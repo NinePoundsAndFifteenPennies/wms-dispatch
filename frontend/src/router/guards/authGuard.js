@@ -29,12 +29,21 @@ export function registerAuthGuard(router) {
     }
 
     const requiredRoles = to.meta.roles || []
+
+    function roleFallbackTarget(role) {
+      const fallbackPath = getDefaultPathByRole(role)
+      if (role === 'worker' && to.path === '/work-orders') {
+        return { path: fallbackPath, query: { migrated_from: 'work-orders' } }
+      }
+      return { path: fallbackPath }
+    }
+
     if (authStore.profileLoaded && authStore.currentUser) {
       if (!authStore.currentUser.is_active) {
         return handleDisabledUser(authStore, to.fullPath)
       }
       if (requiredRoles.length > 0 && !requiredRoles.includes(authStore.currentUser.role)) {
-        return { path: getDefaultPathByRole(authStore.currentUser.role) }
+        return roleFallbackTarget(authStore.currentUser.role)
       }
       return true
     }
@@ -50,7 +59,7 @@ export function registerAuthGuard(router) {
         authStore.setCurrentUser(user)
 
         if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
-          return { path: getDefaultPathByRole(user.role) }
+          return roleFallbackTarget(user.role)
         }
 
         return true

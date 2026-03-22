@@ -275,5 +275,11 @@ class WorkerWorkOrderListResponse(BaseModel):
     total: int
 
 
+class WorkerWorkOrderDetailResponse(WorkerWorkOrderResponse):
+    terminated_at: Optional[datetime] = None
+    terminated_by: Optional[int] = None
+    termination_reason: Optional[str] = None
+
+
 class WorkerCompleteWorkOrderRequest(BaseModel):
     note: Optional[WorkerWorkOrderNotePayload] = None

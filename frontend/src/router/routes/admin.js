@@ -18,7 +18,7 @@ export const adminRoutes = [
         path: '',
         name: 'dashboard',
         component: DashboardView,
-        meta: { roles: ['admin', 'worker'] },
+        meta: { roles: ['admin'] },
       },
       {
         path: 'orders',
@@ -30,7 +30,7 @@ export const adminRoutes = [
         path: 'work-orders',
         name: 'work-orders',
         component: WorkOrdersView,
-        meta: { roles: ['admin', 'worker'] },
+        meta: { roles: ['admin'] },
       },
       {
         path: 'users',

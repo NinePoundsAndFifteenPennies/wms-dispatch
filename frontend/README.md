@@ -54,7 +54,8 @@ src/
       http.js
 
   layouts/
-    AdminLayout.vue         # 管理员（含 worker）布局
+    AdminLayout.vue         # 管理员布局
+    WorkerLayout.vue        # 工人布局
     DispatcherLayout.vue    # 调度员布局
 
   modules/
@@ -68,6 +69,7 @@ src/
     routes/
       public.js             # 公共路由（登录）
       admin.js              # 管理员域路由
+      worker.js             # 工人域路由
       dispatcher.js         # 调度员域路由
     index.js
 
@@ -77,7 +79,7 @@ src/
 
   views/
     LoginView.vue           # 登录页（公共）
-    admin/                  # 非 dispatcher 页面全部归档到 admin
+    admin/                  # 管理员页面
       DashboardView.vue
       OrdersView.vue
       WorkOrdersView.vue
@@ -86,6 +88,8 @@ src/
       WarehouseInventoryView.vue
       CustomersView.vue
       ProductsView.vue
+    worker/                 # 工人页面
+      WorkerWorkOrdersView.vue
     dispatcher/
       DispatcherWorkbenchView.vue
       DispatcherOrdersView.vue
@@ -100,27 +104,34 @@ src/
 ## 角色解耦规范
 
 1. 不同角色业务页面必须物理隔离。
+
 - 管理员页面只能放在 `views/admin`。
 - 调度员页面只能放在 `views/dispatcher`。
+- 工人页面只能放在 `views/worker`。
 - 公共页面（如登录）放在 `views` 根目录。
 
-2. 路由按角色拆分，不在单文件混写。
+1. 路由按角色拆分，不在单文件混写。
+
 - 管理员：`router/routes/admin.js`
+- 工人：`router/routes/worker.js`
 - 调度员：`router/routes/dispatcher.js`
 - 公共：`router/routes/public.js`
 
-3. API 按角色域组织。
+1. API 按角色域组织。
+
 - 管理员接口在 `api/admin/*`
+- 工人接口在 `api/worker/*`
 - 调度员接口在 `api/dispatcher/*`
 - 公共鉴权与请求基座在 `api/common/*`
 
-4. 角色域内 mock/配置不得污染全局。
+1. 角色域内 mock/配置不得污染全局。
+
 - 调度员 mock 统一放在 `modules/dispatcher/mock`。
 
 ## 命名规范
 
-- 布局组件使用明确角色前缀：`AdminLayout`、`DispatcherLayout`。
-- 路由文件以角色命名：`admin.js`、`dispatcher.js`、`public.js`。
+- 布局组件使用明确角色前缀：`AdminLayout`、`WorkerLayout`、`DispatcherLayout`。
+- 路由文件以角色命名：`admin.js`、`worker.js`、`dispatcher.js`、`public.js`。
 - 视图文件在角色目录中保持业务语义命名（如 `OrdersView.vue`）。
 
 ## 权限与跳转

@@ -5,6 +5,10 @@ export const workerWorkOrdersApi = {
     return http.get('/worker/work-orders', { params })
   },
 
+  getMyWorkOrderDetail(workOrderId) {
+    return http.get(`/worker/work-orders/${workOrderId}`)
+  },
+
   startWorkOrder(workOrderId) {
     return http.patch(`/worker/work-orders/${workOrderId}/start`)
   },

@@ -1,9 +1,8 @@
 <template>
   <div class="work-order-page" v-loading="loading">
     <header>
-      <h3>{{ isAdmin ? '工单总览（只读）' : '我的工单' }}</h3>
-      <p v-if="isAdmin">管理员可按状态、阶段、优先级、人员与关键词进行多维筛选。</p>
-      <p v-else>支持按状态和关键词筛选，并可直接推进工单。</p>
+      <h3>工单总览（只读）</h3>
+      <p>管理员可按状态、阶段、优先级、人员与关键词进行多维筛选。</p>
     </header>
 
     <section class="toolbar">
@@ -51,45 +50,7 @@
       <el-button @click="resetFilters">重置</el-button>
     </section>
 
-    <section v-if="isWorker" class="worker-card-grid">
-      <el-empty v-if="tableRows.length === 0" description="暂无匹配工单" :image-size="96" />
-      <article
-        v-for="row in tableRows"
-        :key="row.id"
-        class="worker-order-card"
-        @click="openWorkOrderDetail(row)"
-      >
-        <header class="card-head">
-          <strong>#{{ row.id }} · {{ row.order_no }}</strong>
-          <el-tag :class="statusTagClass(row.status)" effect="light" round>{{ workOrderStatusText(row.status) }}</el-tag>
-        </header>
-        <p class="card-line">阶段：{{ stageText(row.stage_type) }} ｜ 优先级：{{ priorityText(row.priority) }}</p>
-        <p class="card-line">调度员：{{ row.dispatcher_name || '-' }}</p>
-        <p class="card-line">截止：{{ formatDate(row.deadline) }}</p>
-        <footer class="card-actions">
-          <el-button
-            size="small"
-            type="primary"
-            plain
-            :disabled="row.status !== 'pending' || submitting"
-            @click.stop="startWorkOrder(row)"
-          >
-            接单开始
-          </el-button>
-          <el-button
-            size="small"
-            type="success"
-            plain
-            :disabled="row.status !== 'in_progress' || submitting"
-            @click.stop="openCompleteDialog(row)"
-          >
-            完成工单
-          </el-button>
-        </footer>
-      </article>
-    </section>
-
-    <el-table v-else :data="tableRows" stripe>
+    <el-table :data="tableRows" stripe>
       <el-table-column prop="id" label="工单ID" width="90" />
       <el-table-column prop="order_no" label="订单号" min-width="120" />
       <el-table-column label="阶段" min-width="100">
@@ -114,7 +75,7 @@
       </el-table-column>
     </el-table>
 
-    <div v-if="isAdmin" class="pagination-wrap">
+    <div class="pagination-wrap">
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -186,7 +147,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { adminWorkOrdersApi } from '../../api/admin/workOrders'
-import { workerWorkOrdersApi } from '../../api/worker/workOrders'
 import { formatCnDateTime } from '../../utils/cnTime'
 
 const authStore = useAuthStore()
@@ -212,11 +172,8 @@ const filters = reactive({
 })
 
 const isAdmin = computed(() => authStore.currentUser?.role === 'admin')
-const isWorker = computed(() => authStore.currentUser?.role === 'worker')
 const tableRows = computed(() => workOrders.value)
-const searchPlaceholder = computed(() =>
-  isAdmin.value ? '搜索 工单ID/订单号/仓库/工人/调度员' : '搜索 工单ID/订单号/调度员'
-)
+const searchPlaceholder = computed(() => '搜索 工单ID/订单号/仓库/工人/调度员')
 
 const parsedOverrideInfo = computed(() => {
   const raw = String(selectedWorkOrder.value?.description || '').trim()
@@ -331,32 +288,8 @@ async function fetchAdminWorkOrders() {
   }
 }
 
-async function fetchWorkerWorkOrders() {
-  loading.value = true
-  try {
-    const res = await workerWorkOrdersApi.getMyWorkOrders({ status: filters.status || undefined })
-    const source = res.data?.items || []
-    const kw = String(filters.search || '').trim().toLowerCase()
-    workOrders.value = source.filter((row) => {
-      if (filters.stage_type && row.stage_type !== filters.stage_type) return false
-      if (filters.priority && row.priority !== filters.priority) return false
-      if (!kw) return true
-      return [String(row.id || ''), String(row.order_no || ''), String(row.dispatcher_name || '')].some((text) =>
-        text.toLowerCase().includes(kw)
-      )
-    })
-    total.value = workOrders.value.length
-  } finally {
-    loading.value = false
-  }
-}
-
 async function refresh() {
-  if (isAdmin.value) {
-    await fetchAdminWorkOrders()
-    return
-  }
-  await fetchWorkerWorkOrders()
+  await fetchAdminWorkOrders()
 }
 
 function resetFilters() {
@@ -450,49 +383,6 @@ p {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
-}
-
-.worker-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  gap: 12px;
-}
-
-.worker-order-card {
-  border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7fcfb 100%);
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(22, 32, 42, 0.05);
-  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
-  border-left: 4px solid var(--brand);
-}
-
-.worker-order-card:hover {
-  box-shadow: 0 10px 22px rgba(17, 114, 100, 0.14);
-  border-color: #b7d8d2;
-  transform: translateY(-1px);
-}
-
-.card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.card-line {
-  margin: 0;
-  color: var(--ink-muted);
-  font-size: 13px;
-}
-
-.card-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .override-box,

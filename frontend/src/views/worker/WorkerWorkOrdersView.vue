@@ -20,42 +20,59 @@
       />
     </div>
 
-    <el-table :data="filteredWorkOrders" stripe>
-      <el-table-column prop="id" label="工单ID" width="90" />
-      <el-table-column prop="order_no" label="订单号" min-width="120" />
-      <el-table-column label="阶段" min-width="100">
-        <template #default="{ row }">{{ stageText(row.stage_type) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" min-width="100">
-        <template #default="{ row }">{{ workOrderStatusText(row.status) }}</template>
-      </el-table-column>
-      <el-table-column label="优先级" min-width="100">
-        <template #default="{ row }">{{ priorityText(row.priority) }}</template>
-      </el-table-column>
-      <el-table-column prop="description" label="备注" min-width="180" show-overflow-tooltip />
-      <el-table-column label="操作" width="220">
-        <template #default="{ row }">
+    <section class="worker-card-grid">
+      <el-empty v-if="workOrders.length === 0" description="暂无匹配工单" :image-size="96" />
+
+      <article
+        v-for="row in workOrders"
+        :key="row.id"
+        class="worker-order-card"
+        @click="openDetail(row.id)"
+      >
+        <header class="card-head">
+          <strong>#{{ row.id }} · {{ row.order_no }}</strong>
+          <el-tag :class="statusTagClass(row.status)" effect="light" round>{{ workOrderStatusText(row.status) }}</el-tag>
+        </header>
+
+        <p class="card-line">阶段：{{ stageText(row.stage_type) }} ｜ 优先级：{{ priorityText(row.priority) }}</p>
+        <p class="card-line">调度员：{{ row.dispatcher_name || '-' }}</p>
+        <p class="card-line">截止：{{ formatDate(row.deadline) }}</p>
+        <p class="card-line">备注：{{ row.description || '-' }}</p>
+
+        <footer class="card-actions">
           <el-button
             size="small"
             type="primary"
             plain
             :disabled="row.status !== 'pending' || submitting"
-            @click="startWorkOrder(row)"
+            @click.stop="startWorkOrder(row)"
           >
-            开始
+            接单开始
           </el-button>
           <el-button
             size="small"
             type="success"
             plain
             :disabled="row.status !== 'in_progress' || submitting"
-            @click="openCompleteDialog(row)"
+            @click.stop="openCompleteDialog(row)"
           >
-            完成
+            完成工单
           </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+        </footer>
+      </article>
+    </section>
+
+    <div class="pagination-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
 
     <el-dialog v-model="completeDialogVisible" title="完成工单" width="520px">
       <el-form label-width="90px">
@@ -85,43 +102,50 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { workerWorkOrdersApi } from '../../api/worker/workOrders'
+import { formatCnDateTime } from '../../utils/cnTime'
+
+const router = useRouter()
 
 const loading = ref(false)
 const submitting = ref(false)
 const workOrders = ref([])
 const statusFilter = ref('')
 const keyword = ref('')
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
 const completeDialogVisible = ref(false)
 const selectedWorkOrderId = ref(null)
 const completeForm = ref({ note_type: 'normal', content: '' })
-
-const filteredWorkOrders = computed(() => {
-  const kw = keyword.value.trim().toLowerCase()
-  return workOrders.value.filter((row) => {
-    const statusMatched = !statusFilter.value || row.status === statusFilter.value
-    if (!statusMatched) return false
-    if (!kw) return true
-
-    const textMatched = [
-      String(row.id || ''),
-      String(row.order_no || ''),
-      String(row.description || ''),
-    ].some((value) => value.toLowerCase().includes(kw))
-
-    return textMatched
-  })
-})
+let searchTimer = null
+let lastRequestId = 0
 
 async function fetchWorkOrders() {
+  const requestId = ++lastRequestId
   loading.value = true
   try {
-    const res = await workerWorkOrdersApi.getMyWorkOrders()
+    const res = await workerWorkOrdersApi.getMyWorkOrders({
+      page: page.value,
+      page_size: pageSize.value,
+      status: statusFilter.value || undefined,
+      search: keyword.value.trim() || undefined,
+    })
+    if (requestId !== lastRequestId) return
+
     workOrders.value = res.data?.items || []
+    total.value = res.data?.total || 0
+  } catch (error) {
+    if (requestId === lastRequestId) {
+      ElMessage.error(error?.response?.data?.detail || '获取工单失败，请稍后重试')
+    }
   } finally {
-    loading.value = false
+    if (requestId === lastRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -148,6 +172,23 @@ function workOrderStatusText(status) {
     completed: '已完成',
     terminated: '已终止',
   }[status] || status
+}
+
+function statusTagClass(status) {
+  return {
+    pending: 'tag-pending',
+    in_progress: 'tag-progress',
+    completed: 'tag-completed',
+    terminated: 'tag-terminated',
+  }[status]
+}
+
+function formatDate(value) {
+  return formatCnDateTime(value)
+}
+
+function openDetail(workOrderId) {
+  router.push({ name: 'worker-work-order-detail', params: { workOrderId } })
 }
 
 async function startWorkOrder(row) {
@@ -189,6 +230,34 @@ async function completeWorkOrder() {
   }
 }
 
+function handlePageChange(nextPage) {
+  page.value = nextPage
+  fetchWorkOrders()
+}
+
+function handlePageSizeChange(nextSize) {
+  pageSize.value = nextSize
+  page.value = 1
+  fetchWorkOrders()
+}
+
+watch(statusFilter, () => {
+  page.value = 1
+  fetchWorkOrders()
+})
+
+watch(keyword, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    fetchWorkOrders()
+  }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
 onMounted(fetchWorkOrders)
 </script>
 
@@ -220,5 +289,90 @@ p {
 
 .toolbar-item {
   width: 260px;
+}
+
+.pagination-wrap {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.worker-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.worker-order-card {
+  border: 1px solid #d8e1eb;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fcfb 100%);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(22, 32, 42, 0.05);
+  border-left: 4px solid #1c9c89;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+
+.worker-order-card:hover {
+  box-shadow: 0 10px 22px rgba(17, 114, 100, 0.14);
+  border-color: #b7d8d2;
+  transform: translateY(-1px);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-line {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+:deep(.el-tag.tag-pending) {
+  color: #9a5b18;
+  background-color: #fbe9cf;
+  border-color: #efca95;
+}
+
+:deep(.el-tag.tag-progress) {
+  color: #1f5c9a;
+  background-color: #e4effc;
+  border-color: #b9d4f7;
+}
+
+:deep(.el-tag.tag-completed) {
+  color: #24633f;
+  background-color: #ddf4e6;
+  border-color: #b6dfc8;
+}
+
+:deep(.el-tag.tag-terminated) {
+  color: #97463a;
+  background-color: #f8e3de;
+  border-color: #efbfb4;
+}
+
+@media (max-width: 1200px) {
+  .worker-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .worker-card-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

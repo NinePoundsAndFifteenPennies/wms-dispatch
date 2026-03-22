@@ -99,5 +99,5 @@ export function getDefaultPathByRole(role) {
   if (role === 'dispatcher') {
     return '/dispatcher'
   }
-  return '/work-orders'
+  return '/worker/work-orders'
 }

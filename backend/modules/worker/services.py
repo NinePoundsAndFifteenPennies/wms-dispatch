@@ -9,9 +9,22 @@ class WorkerService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_my_work_orders(self, user_id: int, status_filter: Optional[str] = None):
+    async def list_my_work_orders(
+        self,
+        user_id: int,
+        page: int = 1,
+        page_size: int = 10,
+        search: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        stage_type: Optional[str] = None,
+        priority: Optional[str] = None,
+    ):
         where = ["wo.worker_id = :worker_id"]
-        params = {"worker_id": user_id}
+        params = {
+            "worker_id": user_id,
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
 
         allowed_status = {"pending", "in_progress", "completed", "terminated"}
         if status_filter:
@@ -20,6 +33,32 @@ class WorkerService:
             where.append("wo.status = :status")
             params["status"] = status_filter
 
+        allowed_stage_type = {"picking", "staging", "shipping"}
+        if stage_type:
+            if stage_type not in allowed_stage_type:
+                raise HTTPException(status_code=400, detail="Invalid stage type filter")
+            where.append("os.stage_type = :stage_type")
+            params["stage_type"] = stage_type
+
+        allowed_priority = {"high", "medium", "low"}
+        if priority:
+            if priority not in allowed_priority:
+                raise HTTPException(status_code=400, detail="Invalid priority filter")
+            where.append("wo.priority = :priority")
+            params["priority"] = priority
+
+        if search:
+            where.append(
+                """
+                (
+                    CAST(wo.id AS TEXT) ILIKE :search
+                    OR o.order_no ILIKE :search
+                    OR COALESCE(wo.description, '') ILIKE :search
+                )
+                """
+            )
+            params["search"] = f"%{search}%"
+
         where_sql = " AND ".join(where)
 
         count_result = await self.session.execute(
@@ -27,6 +66,8 @@ class WorkerService:
                 f"""
                 SELECT COUNT(*)::INTEGER AS total
                 FROM work_orders wo
+                JOIN orders o ON o.id = wo.order_id
+                JOIN order_stages os ON os.id = wo.stage_id
                 WHERE {where_sql}
                 """
             ),
@@ -68,12 +109,52 @@ class WorkerService:
                     END,
                     wo.deadline ASC NULLS LAST,
                     wo.created_at DESC
+                LIMIT :limit OFFSET :offset
                 """
             ),
             params,
         )
         items = [dict(row) for row in rows_result.mappings().all()]
         return {"items": items, "total": total}
+
+    async def get_my_work_order_detail(self, work_order_id: int, user_id: int):
+        result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    wo.id,
+                    wo.order_id,
+                    o.order_no,
+                    wo.stage_id,
+                    os.stage_type,
+                    d.username AS dispatcher_name,
+                    wo.status,
+                    wo.priority,
+                    wo.deadline,
+                    wo.description,
+                    wo.source,
+                    wo.started_at,
+                    wo.completed_at,
+                    wo.terminated_at,
+                    wo.terminated_by,
+                    wo.termination_reason,
+                    wo.created_at,
+                    wo.updated_at
+                FROM work_orders wo
+                JOIN orders o ON o.id = wo.order_id
+                JOIN order_stages os ON os.id = wo.stage_id
+                JOIN users d ON d.id = wo.dispatcher_id
+                WHERE wo.id = :work_order_id
+                  AND wo.worker_id = :worker_id
+                LIMIT 1
+                """
+            ),
+            {"work_order_id": work_order_id, "worker_id": user_id},
+        )
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Work order not found")
+        return dict(row)
 
     async def _lock_worker_work_order(self, work_order_id: int, user_id: int):
         result = await self.session.execute(

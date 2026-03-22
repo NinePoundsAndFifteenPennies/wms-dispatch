@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from modules.auth.dependencies import get_current_user_required
 from modules.dispatcher.schemas import (
     WorkerCompleteWorkOrderRequest,
+    WorkerWorkOrderDetailResponse,
     WorkerWorkOrderListResponse,
 )
 from modules.worker.dependencies import get_worker_service
@@ -26,11 +27,33 @@ work_orders_router = APIRouter(prefix="/work-orders", tags=["Worker Work Orders"
 
 @work_orders_router.get("", response_model=WorkerWorkOrderListResponse)
 async def list_my_work_orders(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
     status_filter: Optional[str] = Query(default=None, alias="status"),
+    stage_type: Optional[str] = Query(default=None),
+    priority: Optional[str] = Query(default=None),
     service: WorkerService = Depends(get_worker_service),
     current_user=Depends(require_worker_user),
 ):
-    return await service.list_my_work_orders(user_id=current_user.get("id"), status_filter=status_filter)
+    return await service.list_my_work_orders(
+        user_id=current_user.get("id"),
+        page=page,
+        page_size=page_size,
+        search=search,
+        status_filter=status_filter,
+        stage_type=stage_type,
+        priority=priority,
+    )
+
+
+@work_orders_router.get("/{work_order_id}", response_model=WorkerWorkOrderDetailResponse)
+async def get_my_work_order_detail(
+    work_order_id: int,
+    service: WorkerService = Depends(get_worker_service),
+    current_user=Depends(require_worker_user),
+):
+    return await service.get_my_work_order_detail(work_order_id=work_order_id, user_id=current_user.get("id"))
 
 
 @work_orders_router.patch("/{work_order_id}/start")

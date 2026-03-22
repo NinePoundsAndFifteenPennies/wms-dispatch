@@ -282,6 +282,24 @@ onBeforeUnmount(() => {
 .board-list {
   display: grid;
   gap: 10px;
+  max-height: calc(100vh - 365px);
+  min-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.board-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.board-list::-webkit-scrollbar-thumb {
+  background: rgba(126, 117, 104, 0.45);
+  border-radius: 999px;
+}
+
+.board-list::-webkit-scrollbar-track {
+  background: rgba(214, 208, 196, 0.35);
+  border-radius: 999px;
 }
 
 .board-card {
@@ -380,6 +398,13 @@ onBeforeUnmount(() => {
 @media (max-width: 640px) {
   .board-grid {
     grid-template-columns: 1fr;
+  }
+
+  .board-list {
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 </style>
