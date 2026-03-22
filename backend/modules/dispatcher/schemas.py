@@ -220,6 +220,8 @@ class DispatcherCancelOrderRequest(BaseModel):
 class DispatcherOrderWorkOrderResponse(BaseModel):
     id: int
     order_id: int
+    order_no: Optional[str] = None
+    customer_name: Optional[str] = None
     stage_id: int
     stage_type: StageType
     worker_id: int

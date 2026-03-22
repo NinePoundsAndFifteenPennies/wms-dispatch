@@ -531,6 +531,7 @@ GET  /api/dispatcher/my-orders
 GET  /api/dispatcher/my-orders/{order_id}
 GET  /api/dispatcher/dashboard-summary
 GET  /api/dispatcher/inventory
+GET  /api/dispatcher/work-orders
 ```
 
 ### 1) 接单中心列表（待接单）
@@ -846,6 +847,28 @@ GET /api/dispatcher/my-orders?search=关键词&status=completed
 
 **说明：**
 - 用于调度员“我的订单 / 已完成订单”分视图加载。
+
+### 15) 调度员工单中心列表（新增）
+
+```http
+GET /api/dispatcher/work-orders?search=关键词&status=in_progress&sort_by=updated_at&sort_order=desc
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| search | string | - | 按工单ID / 订单号 / 客户名 / 工人名模糊搜索（不匹配工单备注） |
+| status | string | - | `pending \| in_progress \| completed \| terminated` |
+| sort_by | string | updated_at | `created_at \| updated_at \| deadline` |
+| sort_order | string | desc | `asc \| desc` |
+
+**说明：**
+- 仅返回当前登录调度员本人在所属仓库下创建/管理的工单。
+- 返回结构：`{ items: DispatcherOrderWorkOrderResponse[], total: number }`。
+- `DispatcherOrderWorkOrderResponse` 额外返回：
+  - `order_no`：订单号
+  - `customer_name`：客户名称
 
 ---
 

@@ -147,6 +147,24 @@ async def list_dispatcher_workers(
     return await service.list_workers(user_id=current_user.get("id"), search=search)
 
 
+@router.get("/work-orders", response_model=DispatcherOrderWorkOrderListResponse)
+async def list_dispatcher_work_orders(
+    search: Optional[str] = Query(default=None),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    sort_by: str = Query(default="updated_at"),
+    sort_order: str = Query(default="desc"),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_work_orders(
+        user_id=current_user.get("id"),
+        search=search,
+        status_filter=status_filter,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+
 @router.get("/orders/{order_id}/work-orders", response_model=DispatcherOrderWorkOrderListResponse)
 async def list_order_work_orders(
     order_id: int,

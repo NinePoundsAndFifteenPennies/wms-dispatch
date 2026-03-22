@@ -1003,6 +1003,123 @@ class DispatcherService:
         )
         return [dict(row) for row in result.mappings().all()]
 
+    async def list_work_orders(
+        self,
+        user_id: int,
+        search: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+    ):
+        user_result = await self.session.execute(
+            text(
+                """
+                SELECT id, role, warehouse_id
+                FROM users
+                WHERE id = :user_id
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+        user = user_result.mappings().first()
+        if not user or user["role"] != "dispatcher":
+            raise HTTPException(status_code=403, detail="Access denied")
+        if not user["warehouse_id"]:
+            raise HTTPException(status_code=400, detail="Dispatcher warehouse is required")
+
+        where = ["wo.warehouse_id = :warehouse_id", "wo.dispatcher_id = :user_id"]
+        params = {"warehouse_id": user["warehouse_id"], "user_id": user_id}
+
+        allowed_status = {"pending", "in_progress", "completed", "terminated"}
+        if status_filter:
+            if status_filter not in allowed_status:
+                raise HTTPException(status_code=400, detail="Invalid work order status filter")
+            where.append("wo.status = :status")
+            params["status"] = status_filter
+
+        if search:
+            where.append(
+                """
+                (
+                    CAST(wo.id AS TEXT) ILIKE :search
+                    OR o.order_no ILIKE :search
+                    OR c.name ILIKE :search
+                    OR wu.username ILIKE :search
+                )
+                """
+            )
+            params["search"] = f"%{search}%"
+
+        sort_field_map = {
+            "created_at": "wo.created_at",
+            "updated_at": "wo.updated_at",
+            "deadline": "wo.deadline",
+        }
+        sort_expr = sort_field_map.get(sort_by)
+        if sort_expr is None:
+            raise HTTPException(status_code=400, detail="Invalid sort_by")
+
+        normalized_sort_order = sort_order.lower()
+        if normalized_sort_order not in {"asc", "desc"}:
+            raise HTTPException(status_code=400, detail="Invalid sort_order")
+
+        where_sql = " AND ".join(where)
+        count_result = await self.session.execute(
+            text(
+                f"""
+                SELECT COUNT(*)::INTEGER AS total
+                FROM work_orders wo
+                JOIN orders o ON o.id = wo.order_id
+                JOIN customers c ON c.id = o.customer_id
+                JOIN users wu ON wu.id = wo.worker_id
+                WHERE {where_sql}
+                """
+            ),
+            params,
+        )
+        total = count_result.scalar_one() or 0
+
+        rows_result = await self.session.execute(
+            text(
+                f"""
+                SELECT
+                    wo.id,
+                    wo.order_id,
+                    o.order_no,
+                    c.name AS customer_name,
+                    wo.stage_id,
+                    os.stage_type,
+                    wo.worker_id,
+                    wu.username AS worker_name,
+                    wo.dispatcher_id,
+                    wo.warehouse_id,
+                    wo.status,
+                    wo.priority,
+                    wo.deadline,
+                    wo.description,
+                    wo.source,
+                    wo.started_at,
+                    wo.completed_at,
+                    wo.terminated_at,
+                    wo.terminated_by,
+                    wo.termination_reason,
+                    wo.created_at,
+                    wo.updated_at
+                FROM work_orders wo
+                JOIN orders o ON o.id = wo.order_id
+                JOIN customers c ON c.id = o.customer_id
+                JOIN users wu ON wu.id = wo.worker_id
+                JOIN order_stages os ON os.id = wo.stage_id
+                WHERE {where_sql}
+                ORDER BY {sort_expr} {normalized_sort_order.upper()} NULLS LAST, wo.id DESC
+                """
+            ),
+            params,
+        )
+        items = [dict(row) for row in rows_result.mappings().all()]
+        return {"items": items, "total": total}
+
     async def _assess_work_order_assignment(self, order_id: int, user_id: int, stage_id: int, worker_id: int):
         order_row = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
         if order_row["status"] != "in_progress":
