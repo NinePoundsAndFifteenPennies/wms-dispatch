@@ -13,6 +13,8 @@ WorkOrderStatus = Literal["pending", "in_progress", "completed", "terminated"]
 WorkOrderSource = Literal["manual", "agent"]
 WorkOrderNoteType = Literal["normal", "damaged", "qty_mismatch", "other"]
 AssignmentRiskCode = Literal["skill_gap", "worker_overload"]
+TransferStatus = Literal["pending", "approved", "rejected", "cancelled", "completed"]
+InboundStatus = Literal["pending", "confirmed"]
 
 
 class DispatcherOrderListItemResponse(BaseModel):
@@ -301,3 +303,95 @@ class WorkerWorkOrderDetailResponse(WorkerWorkOrderResponse):
 
 class WorkerCompleteWorkOrderRequest(BaseModel):
     note: Optional[WorkerWorkOrderNotePayload] = None
+
+
+class DispatcherTransferCreateRequest(BaseModel):
+    from_warehouse_id: int
+    review_dispatcher_id: int
+    product_id: int
+    qty: int = Field(gt=0)
+    description: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DispatcherTransferReviewRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DispatcherTransferExecuteRequest(BaseModel):
+    expected_arrival_at: Optional[datetime] = None
+
+
+class DispatcherTransferProductOptionResponse(BaseModel):
+    product_id: int
+    sku: str
+    product_name: str
+    qty_available: int
+
+
+class DispatcherTransferWarehouseOptionResponse(BaseModel):
+    id: int
+    name: str
+    address: Optional[str] = None
+
+
+class DispatcherTransferDispatcherOptionResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+
+
+class DispatcherInboundRecordResponse(BaseModel):
+    id: int
+    transfer_order_id: int
+    warehouse_id: int
+    warehouse_name: Optional[str] = None
+    product_id: int
+    product_sku: str
+    product_name: str
+    qty: int
+    status: InboundStatus
+    expected_arrival_at: Optional[datetime] = None
+    confirmed_by: Optional[int] = None
+    confirmed_by_name: Optional[str] = None
+    confirmed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class DispatcherTransferResponse(BaseModel):
+    id: int
+    code: str
+    product_id: int
+    product_sku: str
+    product_name: str
+    from_warehouse_id: int
+    from_warehouse_name: str
+    to_warehouse_id: int
+    to_warehouse_name: str
+    requested_by: int
+    requested_by_name: Optional[str] = None
+    review_dispatcher_id: Optional[int] = None
+    review_dispatcher_name: Optional[str] = None
+    approved_by: Optional[int] = None
+    approved_by_name: Optional[str] = None
+    qty: int
+    status: TransferStatus
+    description: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    source: Literal["manual", "agent"]
+    agent_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    approved_at: Optional[datetime] = None
+    executed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    inbound_record: Optional[DispatcherInboundRecordResponse] = None
+
+
+class DispatcherTransferListResponse(BaseModel):
+    items: List[DispatcherTransferResponse]
+    total: int
+
+
+class DispatcherInboundRecordListResponse(BaseModel):
+    items: List[DispatcherInboundRecordResponse]
+    total: int

@@ -338,6 +338,7 @@ resources/
 | to_warehouse_id | INTEGER | FK → warehouses.id, NOT NULL | 目标仓库 |
 | requested_by | INTEGER | FK → users.id, NOT NULL | 申请人 |
 | approved_by | INTEGER | FK → users.id | 审批人 |
+| review_dispatcher_id | INTEGER | FK → users.id | 复核调度员（目前场景和approved_by是同一个），冗余 |
 | qty | INTEGER | NOT NULL, CHECK (qty > 0) | 调拨数量 |
 | status | VARCHAR(16) | NOT NULL, DEFAULT 'pending' | pending / approved / rejected / cancelled / completed |
 | description | TEXT | | 调拨说明 |

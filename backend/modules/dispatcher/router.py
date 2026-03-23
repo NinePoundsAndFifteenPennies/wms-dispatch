@@ -6,6 +6,8 @@ from modules.auth.dependencies import get_current_user_required
 from modules.dispatcher.dependencies import get_dispatcher_service
 from modules.dispatcher.schemas import (
     DispatcherCancelOrderRequest,
+    DispatcherInboundRecordListResponse,
+    DispatcherInboundRecordResponse,
     DispatcherCreateWorkOrderRequest,
     DispatcherDashboardSummaryResponse,
     DispatcherManualCompleteStageRequest,
@@ -14,6 +16,14 @@ from modules.dispatcher.schemas import (
     DispatcherOrderWorkOrderListResponse,
     DispatcherOrderWorkOrderResponse,
     DispatcherTerminateWorkOrderRequest,
+    DispatcherTransferCreateRequest,
+    DispatcherTransferExecuteRequest,
+    DispatcherTransferDispatcherOptionResponse,
+    DispatcherTransferListResponse,
+    DispatcherTransferProductOptionResponse,
+    DispatcherTransferResponse,
+    DispatcherTransferReviewRequest,
+    DispatcherTransferWarehouseOptionResponse,
     DispatcherWorkOrderPrecheckRequest,
     DispatcherWorkOrderPrecheckResponse,
     DispatcherWorkerOptionResponse,
@@ -35,6 +45,7 @@ dispatcher_only = [Depends(require_dispatcher_user)]
 
 orders_router = APIRouter(prefix="/orders", tags=["Dispatcher Orders"], dependencies=dispatcher_only)
 my_orders_router = APIRouter(prefix="/my-orders", tags=["Dispatcher My Orders"], dependencies=dispatcher_only)
+transfers_router = APIRouter(prefix="/transfers", tags=["Dispatcher Transfers"], dependencies=dispatcher_only)
 
 
 @orders_router.get("", response_model=DispatcherOrderListResponse)
@@ -245,5 +256,133 @@ async def manual_complete_stage(
     )
 
 
+@transfers_router.get("", response_model=DispatcherTransferListResponse)
+async def list_transfers(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    scope: str = Query(default="all"),
+    search: Optional[str] = Query(default=None),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_transfers(
+        user_id=current_user.get("id"),
+        status_filter=status_filter,
+        scope=scope,
+        search=search,
+    )
+
+
+@transfers_router.get("/source-warehouses", response_model=list[DispatcherTransferWarehouseOptionResponse])
+async def list_transfer_source_warehouses(
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_transfer_source_warehouses(user_id=current_user.get("id"))
+
+
+@transfers_router.get("/source-inventory", response_model=list[DispatcherTransferProductOptionResponse])
+async def list_transfer_source_inventory(
+    warehouse_id: int = Query(..., ge=1),
+    search: Optional[str] = Query(default=None),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_transfer_source_inventory(
+        user_id=current_user.get("id"),
+        source_warehouse_id=warehouse_id,
+        search=search,
+    )
+
+
+@transfers_router.get("/source-dispatchers", response_model=list[DispatcherTransferDispatcherOptionResponse])
+async def list_transfer_source_dispatchers(
+    warehouse_id: int = Query(..., ge=1),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_transfer_source_dispatchers(
+        user_id=current_user.get("id"),
+        source_warehouse_id=warehouse_id,
+    )
+
+
+@transfers_router.post("", response_model=DispatcherTransferResponse, status_code=status.HTTP_201_CREATED)
+async def create_transfer(
+    payload: DispatcherTransferCreateRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.create_transfer(user_id=current_user.get("id"), payload=payload)
+
+
+@transfers_router.get("/{transfer_id}", response_model=DispatcherTransferResponse)
+async def get_transfer_detail(
+    transfer_id: int,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_transfer_detail(transfer_id=transfer_id, user_id=current_user.get("id"))
+
+
+@transfers_router.post("/{transfer_id}/approve", response_model=DispatcherTransferResponse)
+async def approve_transfer(
+    transfer_id: int,
+    payload: DispatcherTransferReviewRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.approve_transfer(
+        transfer_id=transfer_id,
+        user_id=current_user.get("id"),
+        reason=payload.reason,
+    )
+
+
+@transfers_router.post("/{transfer_id}/reject", response_model=DispatcherTransferResponse)
+async def reject_transfer(
+    transfer_id: int,
+    payload: DispatcherTransferReviewRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.reject_transfer(
+        transfer_id=transfer_id,
+        user_id=current_user.get("id"),
+        reason=payload.reason,
+    )
+
+
+@transfers_router.post("/{transfer_id}/execute", response_model=DispatcherTransferResponse)
+async def execute_transfer(
+    transfer_id: int,
+    payload: DispatcherTransferExecuteRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.execute_transfer(
+        transfer_id=transfer_id,
+        user_id=current_user.get("id"),
+        expected_arrival_at=payload.expected_arrival_at,
+    )
+
+
+@router.get("/inbound-records/pending", response_model=DispatcherInboundRecordListResponse)
+async def list_pending_inbound_records(
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.list_pending_inbound_records(user_id=current_user.get("id"))
+
+
+@router.post("/inbound-records/{record_id}/confirm", response_model=DispatcherInboundRecordResponse)
+async def confirm_inbound_record(
+    record_id: int,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.confirm_inbound_record(record_id=record_id, user_id=current_user.get("id"))
+
+
 router.include_router(orders_router)
 router.include_router(my_orders_router)
+router.include_router(transfers_router)
