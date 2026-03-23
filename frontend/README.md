@@ -46,9 +46,12 @@ src/
       warehouses.js
       customers.js
       products.js
+      workOrders.js
     dispatcher/             # 调度员域 API
       orders.js
       inventory.js
+    worker/                 # 工人域 API
+      workOrders.js
     common/                 # 公共 API 能力
       auth.js
       http.js
