@@ -143,12 +143,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { adminWorkOrdersApi } from '../../api/admin/workOrders'
 import { formatCnDateTime } from '../../utils/cnTime'
 
+const route = useRoute()
 const authStore = useAuthStore()
 const loading = ref(false)
 const submitting = ref(false)
@@ -277,6 +279,25 @@ function buildQueryParams() {
   }
 }
 
+function syncFiltersFromRoute() {
+  const {
+    search,
+    status,
+    stage_type: stageType,
+    priority,
+    worker_id: workerId,
+    dispatcher_id: dispatcherId,
+  } = route.query
+
+  filters.search = typeof search === 'string' ? search : ''
+  filters.status = typeof status === 'string' ? status : ''
+  filters.stage_type = typeof stageType === 'string' ? stageType : ''
+  filters.priority = typeof priority === 'string' ? priority : ''
+  filters.worker_id = workerId ? Number(workerId) : undefined
+  filters.dispatcher_id = dispatcherId ? Number(dispatcherId) : undefined
+  currentPage.value = 1
+}
+
 async function fetchAdminWorkOrders() {
   loading.value = true
   try {
@@ -342,7 +363,18 @@ async function completeWorkOrder() {
   }
 }
 
-onMounted(refresh)
+onMounted(() => {
+  syncFiltersFromRoute()
+  refresh()
+})
+
+watch(
+  () => route.query,
+  () => {
+    syncFiltersFromRoute()
+    refresh()
+  },
+)
 </script>
 
 <style scoped>

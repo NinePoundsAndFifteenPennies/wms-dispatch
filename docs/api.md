@@ -434,6 +434,7 @@ PATCH  /api/admin/customers/{customer_id}/status
 
 ```http
 GET    /api/admin/products
+GET    /api/admin/products/{product_id}
 POST   /api/admin/products
 PUT    /api/admin/products/{product_id}
 DELETE /api/admin/products/{product_id}
@@ -442,6 +443,9 @@ PATCH  /api/admin/products/{product_id}/status
 POST   /api/admin/products/{product_id}/image
 DELETE /api/admin/products/{product_id}/image
 ```
+
+**详情接口说明：**
+- `GET /api/admin/products/{product_id}`：返回单个产品详情，字段结构同产品列表 `items[]` 元素。
 
 **图片接口说明：**
 - 上传图片：`POST /image`，`multipart/form-data`，字段名为 `image`。
@@ -516,6 +520,71 @@ GET /api/admin/orders/{order_id}/export?export_format=pdf
 
 **说明：**
 - 返回 `application/pdf`，响应 `data.content_base64` 为订单详情 PDF 的 base64 内容。
+
+---
+
+### 管理控制台总览（新增）
+
+```http
+GET /api/admin/dashboard-overview
+GET /api/admin/dashboard-overview/warehouse-performance/{warehouse_id}
+```
+
+#### 1) 获取总览聚合数据
+
+```http
+GET /api/admin/dashboard-overview
+```
+
+**说明：**
+- 返回管理员总览页所需的聚合指标与图表数据（订单运营口径，不含工单趋势图）。
+- `product_popularity` 仅统计 `status = completed` 的订单明细。
+
+**成功响应示例（节选）**
+```json
+{
+  "kpis": {
+    "pending_acceptance_orders": 8,
+    "low_stock_alerts": 5,
+    "cancelled_orders_today": 2,
+    "accepted_no_dispatch_orders": 3
+  },
+  "warehouse_order_performance": [
+    {
+      "warehouse_id": 1,
+      "warehouse_name": "北京中心周转仓",
+      "total_orders": 188,
+      "completed_orders": 160,
+      "completion_rate": 85
+    }
+  ],
+  "product_popularity": [
+    {
+      "product_id": 12,
+      "sku": "SKU-12001",
+      "product_name": "医用口罩",
+      "total_qty": 1320,
+      "order_count": 94
+    }
+  ]
+}
+```
+
+#### 2) 获取仓库下调度员订单绩效
+
+```http
+GET /api/admin/dashboard-overview/warehouse-performance/{warehouse_id}
+```
+
+**路径参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| warehouse_id | int | 仓库 ID |
+
+**说明：**
+- 用于总览页“仓库订单完成率”图点击下钻。
+- 返回仓库汇总（总单量/完成单量/完成率）和调度员明细。
 
 ---
 

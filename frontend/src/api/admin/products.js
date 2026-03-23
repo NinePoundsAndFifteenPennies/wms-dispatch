@@ -5,6 +5,10 @@ export const productsApi = {
     return http.get('/admin/products', { params })
   },
 
+  getProductById(id) {
+    return http.get(`/admin/products/${id}`)
+  },
+
   createProduct(data) {
     return http.post('/admin/products', data)
   },

@@ -342,12 +342,15 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus } from '@element-plus/icons-vue'
 import { customersApi } from '../../api/admin/customers'
 import { ordersApi } from '../../api/admin/orders'
 import { productsApi } from '../../api/admin/products'
+
+const route = useRoute()
 
 const orders = ref([])
 const total = ref(0)
@@ -454,6 +457,15 @@ function buildQueryParams() {
     start_date: startDate.value || undefined,
     end_date: endDate.value || undefined,
   }
+}
+
+function syncFiltersFromRoute() {
+  const { status, search, start_date: startDateQuery, end_date: endDateQuery } = route.query
+  statusFilter.value = typeof status === 'string' ? status : ''
+  searchQuery.value = typeof search === 'string' ? search : ''
+  startDate.value = typeof startDateQuery === 'string' ? startDateQuery : ''
+  endDate.value = typeof endDateQuery === 'string' ? endDateQuery : ''
+  currentPage.value = 1
 }
 
 // ── 数据加载 ───────────────────────────────────────────────────────────
@@ -748,8 +760,17 @@ async function handleDetailPdfExport() {
 }
 
 onMounted(() => {
+  syncFiltersFromRoute()
   fetchOrders()
 })
+
+watch(
+  () => route.query,
+  () => {
+    syncFiltersFromRoute()
+    fetchOrders()
+  },
+)
 </script>
 
 <style scoped>

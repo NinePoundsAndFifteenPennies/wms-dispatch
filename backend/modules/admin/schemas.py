@@ -356,3 +356,87 @@ class AdminWorkOrderListItemResponse(BaseModel):
 class AdminWorkOrderListResponse(BaseModel):
     items: List[AdminWorkOrderListItemResponse]
     total: int
+
+
+class DashboardKpiResponse(BaseModel):
+    pending_acceptance_orders: int
+    low_stock_alerts: int
+    cancelled_orders_today: int
+    accepted_no_dispatch_orders: int
+
+
+class DashboardDistributionItemResponse(BaseModel):
+    key: str
+    label: str
+    value: int
+
+
+class DashboardWarehouseLoadItemResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    load_percent: int
+    qty_on_hand: int
+    capacity: int
+
+
+class DashboardLowStockItemResponse(BaseModel):
+    inventory_id: int
+    warehouse_id: int
+    warehouse_name: str
+    product_id: int
+    sku: str
+    product_name: str
+    qty_available: int
+    qty_threshold: int
+
+
+class DashboardAlertItemResponse(BaseModel):
+    alert_type: str
+    message: str
+    order_id: Optional[int] = None
+    order_no: Optional[str] = None
+    inventory_id: Optional[int] = None
+    warehouse_id: Optional[int] = None
+
+
+class DashboardWarehouseOrderPerformanceItemResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    total_orders: int
+    completed_orders: int
+    completion_rate: int
+
+
+class DashboardProductPopularityItemResponse(BaseModel):
+    product_id: int
+    sku: str
+    product_name: str
+    total_qty: int
+    order_count: int
+
+
+class DashboardDispatcherOrderPerformanceItemResponse(BaseModel):
+    dispatcher_id: int
+    dispatcher_name: str
+    total_orders: int
+    completed_orders: int
+    completion_rate: int
+
+
+class AdminWarehouseDispatcherPerformanceResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    total_orders: int
+    completed_orders: int
+    completion_rate: int
+    dispatchers: List[DashboardDispatcherOrderPerformanceItemResponse]
+
+
+class AdminDashboardOverviewResponse(BaseModel):
+    kpis: DashboardKpiResponse
+    orders_status_distribution: List[DashboardDistributionItemResponse]
+    warehouse_loads: List[DashboardWarehouseLoadItemResponse]
+    low_stock_top: List[DashboardLowStockItemResponse]
+    warehouse_order_performance: List[DashboardWarehouseOrderPerformanceItemResponse]
+    product_popularity: List[DashboardProductPopularityItemResponse]
+    alerts: List[DashboardAlertItemResponse]

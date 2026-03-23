@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from modules.admin.schemas import (
     ActiveStatusUpdate,
+    AdminDashboardOverviewResponse,
+    AdminWarehouseDispatcherPerformanceResponse,
     AdminWorkOrderListResponse,
     BatchDeleteRequest,
     CustomerCreate,
@@ -47,6 +49,23 @@ customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"]
 products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"], dependencies=admin_only)
 orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"], dependencies=admin_only)
 work_orders_router = APIRouter(prefix="/admin/work-orders", tags=["Admin Work Orders"], dependencies=admin_only)
+
+
+@router.get("/admin/dashboard-overview", response_model=AdminDashboardOverviewResponse, dependencies=admin_only)
+async def get_admin_dashboard_overview(service: AdminService = Depends(get_admin_service)):
+    return await service.get_dashboard_overview()
+
+
+@router.get(
+    "/admin/dashboard-overview/warehouse-performance/{warehouse_id}",
+    response_model=AdminWarehouseDispatcherPerformanceResponse,
+    dependencies=admin_only,
+)
+async def get_dashboard_warehouse_dispatcher_performance(
+    warehouse_id: int,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_warehouse_dispatcher_performance(warehouse_id)
 
 @users_router.get("", response_model=UserListResponse)
 async def list_users(
@@ -283,6 +302,11 @@ async def list_products(
     service: AdminService = Depends(get_admin_service),
 ):
     return await service.list_products(page=page, page_size=page_size, search=search)
+
+
+@products_router.get("/{product_id}", response_model=ProductResponse)
+async def get_product(product_id: int, service: AdminService = Depends(get_admin_service)):
+    return await service.get_product(product_id)
 
 
 @products_router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)

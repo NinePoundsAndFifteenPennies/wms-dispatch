@@ -298,10 +298,14 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus, Search } from '@element-plus/icons-vue'
 import { productsApi } from '../../api/admin/products'
+
+const route = useRoute()
+const router = useRouter()
 
 const products = ref([])
 const loading = ref(false)
@@ -412,6 +416,36 @@ async function fetchProducts() {
     total.value = res.data.total || 0
   } finally {
     loading.value = false
+  }
+}
+
+async function openProductDetailById(productId) {
+  if (!Number.isInteger(productId) || productId <= 0) return
+  try {
+    const res = await productsApi.getProductById(productId)
+    openDetailDialog(res.data)
+  } catch {
+    ElMessage.warning('目标产品不存在或已被移除')
+  }
+}
+
+async function applyRouteQuery() {
+  const routeSearch = typeof route.query.search === 'string' ? route.query.search.trim() : ''
+  const focusProductId = Number(route.query.focus_product_id || 0)
+  const shouldRefetch = searchQuery.value !== routeSearch
+
+  if (shouldRefetch) {
+    searchQuery.value = routeSearch
+    currentPage.value = 1
+    await fetchProducts()
+  }
+
+  if (focusProductId > 0) {
+    await openProductDetailById(focusProductId)
+
+    const nextQuery = { ...route.query }
+    delete nextQuery.focus_product_id
+    router.replace({ path: route.path, query: nextQuery })
   }
 }
 
@@ -618,8 +652,15 @@ async function handleBatchDelete() {
 }
 
 onMounted(() => {
-  fetchProducts()
+  fetchProducts().then(applyRouteQuery)
 })
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+  },
+)
 </script>
 
 <style scoped>
