@@ -9,6 +9,8 @@
 - `models/`：全局数据表基类定义，存放了所有 ORM 关联。
 - `modules/`：按业务领域（如 `admin`, `auth`, `worker` 等）划分子系统。
 
+其中，复杂领域允许在自身目录下继续做“按业务域分组”的服务拆分。例如 `admin` 已将超长业务服务拆到 `modules/admin/service/` 包内，并通过 `modules/admin/services.py` 保持统一兼容导出。
+
 ---
 
 ## 核心三层范式
@@ -25,11 +27,26 @@
 
 ### 2. Service 层 (业务服务层)
 - **定位**：系统的核心大脑，全权处理此业务的具体工作。
-- **所在文件**：`modules/{domain}/services.py` 
+- **所在文件**：
+  - 简单模块：`modules/{domain}/services.py`
+  - 复杂模块：`modules/{domain}/service/*.py`（按业务域拆分），并在 `modules/{domain}/services.py` 保留统一入口导出，避免影响 Router/Dependencies 的既有引用
 - **职责**：
   - 处理全部的内部应用逻辑验证（如拦截非法权限，排查是否存在重名数据）。
   - 连接数据库依赖，执行完整的 SQLAlchemy 异步 ORM 查询及保存，并手动包裹 try/catch 的 DB 事务。
   - 返回从数据库拿到并组装好的模型实体列表/单例给外层。
+
+#### Admin 模块拆分示例（当前已落地）
+
+- `modules/admin/service/base.py`：基础能力（`AsyncSession` 挂载、公共常量与通用函数）
+- `modules/admin/service/work_orders.py`：工单管理
+- `modules/admin/service/dashboard.py`：看板聚合统计
+- `modules/admin/service/users.py`：用户管理
+- `modules/admin/service/warehouses.py`：仓库与库存流转
+- `modules/admin/service/customers.py`：客户管理
+- `modules/admin/service/orders.py`：订单管理与导出
+- `modules/admin/service/products.py`：商品管理
+- `modules/admin/service/__init__.py`：组合 `AdminService`（Mixin 聚合）
+- `modules/admin/services.py`：兼容导出层（对外继续暴露 `AdminService`）
 
 ### 3. Schema 层 (传输对象 DTO/BO)
 - **定位**：结构载体转换定义与进出防腐。
