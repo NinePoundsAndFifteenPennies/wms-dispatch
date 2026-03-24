@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,6 +11,8 @@ from modules.dispatcher.schemas import (
     DispatcherInboundRecordResponse,
     DispatcherCreateWorkOrderRequest,
     DispatcherDashboardSummaryResponse,
+    DispatcherInventoryFlowNodeDetailResponse,
+    DispatcherInventoryFlowTrendResponse,
     DispatcherManualCompleteStageRequest,
     DispatcherOrderDetailResponse,
     DispatcherOrderListResponse,
@@ -146,6 +149,31 @@ async def get_dispatcher_inventory(
         page=page,
         page_size=page_size,
         search=search,
+    )
+
+
+@router.get("/inventory-movements/trend", response_model=DispatcherInventoryFlowTrendResponse)
+async def get_dispatcher_inventory_flow_trend(
+    days: int = Query(14, ge=1, le=90),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_inventory_flow_trend(user_id=current_user.get("id"), days=days)
+
+
+@router.get("/inventory-movements/node-details", response_model=DispatcherInventoryFlowNodeDetailResponse)
+async def get_dispatcher_inventory_flow_node_details(
+    date: date,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_inventory_flow_node_details(
+        user_id=current_user.get("id"),
+        target_date=date,
+        page=page,
+        page_size=page_size,
     )
 
 

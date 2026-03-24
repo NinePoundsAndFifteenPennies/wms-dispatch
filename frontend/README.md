@@ -38,71 +38,108 @@ npm run preview
 ## 目录结构（重构后）
 
 ```text
-src/
-  api/
-    admin/                  # 管理员域 API
-      users.js
-      orders.js
-      warehouses.js
-      customers.js
-      products.js
-      workOrders.js
-    dispatcher/             # 调度员域 API
-      orders.js
-      inventory.js
-    worker/                 # 工人域 API
-      workOrders.js
-    common/                 # 公共 API 能力
-      auth.js
-      http.js
-
-  layouts/
-    AdminLayout.vue         # 管理员布局
-    WorkerLayout.vue        # 工人布局
-    DispatcherLayout.vue    # 调度员布局
-
-  modules/
-    dispatcher/
-      mock/
-        dispatcher.js       # 调度员域 mock 数据
-
-  router/
-    guards/
-      authGuard.js          # 统一鉴权守卫
-    routes/
-      public.js             # 公共路由（登录）
-      admin.js              # 管理员域路由
-      worker.js             # 工人域路由
-      dispatcher.js         # 调度员域路由
-    index.js
-
-  stores/
-    auth.js
-    dispatcher.js
-
-  views/
-    LoginView.vue           # 登录页（公共）
-    admin/                  # 管理员页面
-      DashboardView.vue
-      OrdersView.vue
-      WorkOrdersView.vue
-      UsersView.vue
-      WarehousesView.vue
-      WarehouseInventoryView.vue
-      CustomersView.vue
-      ProductsView.vue
-    worker/                 # 工人页面
-      WorkerWorkOrdersView.vue
-    dispatcher/
-      DispatcherWorkbenchView.vue
-      DispatcherOrdersView.vue
-      DispatcherOrderDetailView.vue
-      DispatcherMyOrdersView.vue
-      DispatcherMyOrderDetailView.vue
-      DispatcherInventoryView.vue
-      DispatcherWorkOrdersView.vue
-      DispatcherTransfersView.vue
+frontend/
+├─ src/
+│  ├─ api/
+│  │  ├─ admin/                        # 管理员域 API
+│  │  │  ├─ customers.js
+│  │  │  ├─ dashboard.js
+│  │  │  ├─ orders.js
+│  │  │  ├─ products.js
+│  │  │  ├─ users.js
+│  │  │  ├─ warehouses.js              # 含库存流水趋势/节点详情接口
+│  │  │  └─ workOrders.js
+│  │  ├─ dispatcher/                   # 调度员域 API
+│  │  │  ├─ inventory.js               # 含本仓流水趋势/节点详情接口
+│  │  │  ├─ orders.js
+│  │  │  └─ transfers.js
+│  │  ├─ worker/
+│  │  │  └─ workOrders.js
+│  │  └─ common/
+│  │     ├─ auth.js
+│  │     └─ http.js
+│  │
+│  ├─ components/
+│  │  ├─ admin/
+│  │  │  └─ dashboard/                 # 管理控制台图表组件
+│  │  ├─ dispatcher/
+│  │  └─ shared/                       # 跨角色复用组件
+│  │     ├─ DetailInfoBlock.vue
+│  │     ├─ InventoryFlowLineChart.vue
+│  │     ├─ InventoryFlowNodeDetailDialog.vue
+│  │     └─ OrderSearchBox.vue
+│  │
+│  ├─ layouts/
+│  │  ├─ AdminLayout.vue
+│  │  ├─ DispatcherLayout.vue
+│  │  └─ WorkerLayout.vue
+│  │
+│  ├─ modules/
+│  │  └─ dispatcher/
+│  │     └─ mock/
+│  │        └─ dispatcher.js
+│  │
+│  ├─ router/
+│  │  ├─ guards/
+│  │  │  └─ authGuard.js
+│  │  ├─ routes/
+│  │  │  ├─ admin.js
+│  │  │  ├─ dispatcher.js
+│  │  │  ├─ public.js
+│  │  │  └─ worker.js
+│  │  └─ index.js
+│  │
+│  ├─ stores/
+│  │  ├─ auth.js
+│  │  └─ dispatcher.js
+│  │
+│  ├─ utils/
+│  │  └─ cnTime.js
+│  │
+│  ├─ views/
+│  │  ├─ LoginView.vue
+│  │  ├─ admin/
+│  │  │  ├─ CustomersView.vue
+│  │  │  ├─ DashboardView.vue
+│  │  │  ├─ InventoryFlowRecordsView.vue     # 管理员多仓流水记录
+│  │  │  ├─ OrdersView.vue
+│  │  │  ├─ ProductsView.vue
+│  │  │  ├─ UsersView.vue
+│  │  │  ├─ WarehouseInventoryView.vue
+│  │  │  ├─ WarehousesView.vue
+│  │  │  └─ WorkOrdersView.vue
+│  │  ├─ dispatcher/
+│  │  │  ├─ DispatcherFlowRecordsView.vue    # 调度员本仓流水记录
+│  │  │  ├─ DispatcherInventoryView.vue
+│  │  │  ├─ DispatcherMyOrderDetailView.vue
+│  │  │  ├─ DispatcherMyOrdersView.vue
+│  │  │  ├─ DispatcherOrderDetailView.vue
+│  │  │  ├─ DispatcherOrdersView.vue
+│  │  │  ├─ DispatcherTransfersView.vue
+│  │  │  ├─ DispatcherWorkbenchView.vue
+│  │  │  └─ DispatcherWorkOrdersView.vue
+│  │  └─ worker/
+│  │     ├─ WorkerWorkOrderDetailView.vue
+│  │     └─ WorkerWorkOrdersView.vue
+│  │
+│  ├─ App.vue
+│  ├─ main.js
+│  └─ style.css
+│
+├─ index.html
+├─ package.json
+└─ vite.config.js
 ```
+
+## 新增页面与组件（库存流水）
+
+1. 管理员：`InventoryFlowRecordsView.vue`
+2. 调度员：`DispatcherFlowRecordsView.vue`
+3. 公共图表：`InventoryFlowLineChart.vue`
+4. 公共节点详情：`InventoryFlowNodeDetailDialog.vue`
+
+说明：
+流水统计口径已统一为仅 `delta_on_hand != 0` 的真实库存变化；节点详情支持展示业务化关联说明。
 
 ## 角色解耦规范
 
@@ -143,18 +180,6 @@ src/
 - 登录后默认跳转规则：`stores/auth.js` 中 `getDefaultPathByRole()`
 - 未登录访问受保护路由会跳转到 `/login`
 
-## 调度员订单页说明
-
-- “我的订单”为统一页面路由：`/dispatcher/my-orders`。
-- 状态筛选通过查询参数传递：`status=in_progress|completed|cancelled`。
-- 顶部状态徽章（进行中/已完成）会自动携带筛选参数跳转到“我的订单”页面。
-
-## 调度员调拨页说明
-
-- 调拨工作台路由：`/dispatcher/transfers`。
-- 视角“我的审批”仅展示当前登录调度员被指定为审批人的调拨单。
-- 在“我的审批”视角中，当状态筛选为空时，展示全部审批相关状态：`pending` / `approved` / `rejected` / `completed`。
-- 在“待我入库”视角中，状态栏会禁用，列表仅展示“我发起且待确认入库”的记录。
 
 ## 开发约定
 

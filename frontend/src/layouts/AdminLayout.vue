@@ -30,6 +30,10 @@
           <el-icon class="menu-icon"><OfficeBuilding /></el-icon>
           仓库管理
         </el-menu-item>
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/flow-records">
+          <el-icon class="menu-icon"><TrendCharts /></el-icon>
+          流水记录
+        </el-menu-item>
         <el-menu-item v-if="authStore.hasRole('admin')" index="/customers">
           <el-icon class="menu-icon"><User /></el-icon>
           客户管理
@@ -92,7 +96,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, User, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User, UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/common/http'
 
@@ -110,6 +114,7 @@ const titleMap = {
   '/work-orders': '工单管理',
   '/users': '用户管理',
   '/warehouses': '仓库管理',
+  '/flow-records': '流水记录',
   '/customers': '客户管理',
   '/products': '产品管理',
 }

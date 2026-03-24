@@ -67,7 +67,6 @@ POST /api/auth/login
 **说明:**
 - 失败状态码：`401` 密码错误, `403` 账户被禁用
 
----
 
 ### 获取当前用户信息
 
@@ -411,6 +410,88 @@ POST /api/admin/warehouses/{warehouse_id}/inventory/inbound
 - 入库会写入 `stocktakes` 与 `inventory_movements`，用于后续审计与追踪。
 - 禁用仓库与下架商品不允许进货。
 
+#### 4) 库存流水记录（趋势 + 日节点详情）
+
+```http
+GET /api/admin/warehouses/inventory-movements/trends?days=14
+GET /api/admin/warehouses/{warehouse_id}/inventory-movements/node-details?date=YYYY-MM-DD&page=1&page_size=20
+```
+
+**统计口径说明：**
+- 该页面统计仅计算真实库存变化：`delta_on_hand != 0`。
+- `delta_reserved` 与 `delta_locked` 仅用于业务内部状态管理，不纳入流水趋势统计。
+
+**趋势接口查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| days | int | 14 | 统计天数，1~90 |
+
+**趋势接口成功响应示例：**
+
+```json
+{
+  "warehouses": [
+    {
+      "warehouse_id": 1,
+      "warehouse_name": "华东一号总仓",
+      "points": [
+        {
+          "date": "2026-03-18",
+          "movement_count": 5,
+          "total_abs_delta": 132
+        }
+      ]
+    }
+  ]
+}
+```
+
+**日节点详情查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| date | date | - | 指定日期（`YYYY-MM-DD`） |
+| page | int | 1 | 当前页码 |
+| page_size | int | 20 | 每页条数，1~100 |
+
+**日节点详情响应要点：**
+- `total_abs_delta = SUM(ABS(delta_on_hand))`
+- `positive_delta_on_hand = SUM(delta_on_hand > 0)`
+- `negative_delta_on_hand_abs = SUM(ABS(delta_on_hand < 0))`
+- `items` 为当日原子节点，支持前端按时间序列绘制点位图。
+- `related_description` 为业务化文案（订单号、调拨 from/to、SKU、数量、原因等）。
+
+**日节点详情成功响应示例（节选）：**
+
+```json
+{
+  "warehouse_id": 1,
+  "warehouse_name": "华东一号总仓",
+  "date": "2026-03-18",
+  "movement_count": 5,
+  "total_abs_delta": 132,
+  "positive_delta_on_hand": 80,
+  "negative_delta_on_hand_abs": 52,
+  "items": [
+    {
+      "id": 901,
+      "created_at": "2026-03-18T10:31:02",
+      "change_type": "ship_deduct",
+      "product_id": 8,
+      "product_sku": "SKU-10086",
+      "product_name": "标准纸箱",
+      "delta_on_hand": -10,
+      "related_type": "order",
+      "related_id": 3001,
+      "related_description": "订单 ORD-20260318-0001；备注：加急发货",
+      "operated_by_name": "disp_chen"
+    }
+  ],
+  "total": 5
+}
+```
+
 ---
 
 ### 客户管理（新增）
@@ -600,6 +681,8 @@ GET  /api/dispatcher/my-orders
 GET  /api/dispatcher/my-orders/{order_id}
 GET  /api/dispatcher/dashboard-summary
 GET  /api/dispatcher/inventory
+GET  /api/dispatcher/inventory-movements/trend
+GET  /api/dispatcher/inventory-movements/node-details
 GET  /api/dispatcher/work-orders
 ```
 
@@ -761,7 +844,58 @@ GET /api/dispatcher/inventory?page=1&page_size=10&search=关键词
 - 返回当前登录调度员所属仓库的库存分页列表。
 - 该接口为只读接口，不提供盘点修正/进货等写操作。
 
-### 8) 调度员可选工人列表
+### 8) 调度员本仓流水记录
+
+```http
+GET /api/dispatcher/inventory-movements/trend?days=14
+GET /api/dispatcher/inventory-movements/node-details?date=YYYY-MM-DD&page=1&page_size=20
+```
+
+**统计口径说明：**
+- 仅统计 `delta_on_hand != 0` 的记录（真实库存变动）。
+- `delta_reserved`、`delta_locked` 不参与流水统计。
+
+#### 8.1 本仓流水趋势
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| days | int | 14 | 统计天数，1~90 |
+
+**成功响应示例：**
+
+```json
+{
+  "warehouse_id": 1,
+  "warehouse_name": "华东一号总仓",
+  "points": [
+    {
+      "date": "2026-03-18",
+      "movement_count": 5,
+      "total_abs_delta": 132
+    }
+  ]
+}
+```
+
+#### 8.2 本仓日节点详情
+
+**查询参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| date | date | - | 指定日期（`YYYY-MM-DD`） |
+| page | int | 1 | 当前页码 |
+| page_size | int | 20 | 每页条数，1~100 |
+
+**返回结构要点：**
+- `total_abs_delta`：绝对值总变化量。
+- `positive_delta_on_hand`：当日现存正向变化量（入库方向）。
+- `negative_delta_on_hand_abs`：当日现存负向变化量绝对值（出库方向）。
+- `items[].related_description`：业务化说明文案，便于直接作为操作日志阅读。
+
+### 9) 调度员可选工人列表
 
 ```http
 GET /api/dispatcher/workers?search=关键词
@@ -780,7 +914,7 @@ GET /api/dispatcher/workers?search=关键词
   - `active_work_order_count`：工人当前在途工单数（`pending + in_progress`）
   - `active_work_order_limit`：在途工单阈值（读取后端配置 `DISPATCHER_ACTIVE_WORK_ORDER_LIMIT`）
 
-### 9) 调度员派单预校验（新增）
+### 10) 调度员派单预校验（新增）
 
 ```http
 POST /api/dispatcher/orders/{order_id}/work-orders/precheck
@@ -834,7 +968,7 @@ POST /api/dispatcher/orders/{order_id}/work-orders/precheck
 - 若 `worker_skill >= required_skill_max`，技能维度无风险。
 - 负载风险判定：`active_work_order_count >= active_work_order_limit`。
 
-### 10) 调度员订单工单列表
+### 11) 调度员订单工单列表
 
 ```http
 GET /api/dispatcher/orders/{order_id}/work-orders?stage_id=12&status=in_progress
@@ -851,7 +985,7 @@ GET /api/dispatcher/orders/{order_id}/work-orders?stage_id=12&status=in_progress
 - 仅允许访问当前调度员本人订单。
 - 返回结构：`{ items: DispatcherOrderWorkOrderResponse[], total: number }`。
 
-### 11) 调度员创建工单
+### 12) 调度员创建工单
 
 ```http
 POST /api/dispatcher/orders/{order_id}/work-orders
@@ -875,7 +1009,7 @@ POST /api/dispatcher/orders/{order_id}/work-orders
   - `[override][skill_gap,worker_overload] 强制原因文本`
   - 若同时填写普通备注，普通备注会换行追加在前缀后。
 
-### 12) 调度员终止工单
+### 13) 调度员终止工单
 
 ```http
 PATCH /api/dispatcher/work-orders/{work_order_id}/terminate
@@ -887,7 +1021,7 @@ PATCH /api/dispatcher/work-orders/{work_order_id}/terminate
 |------|------|------|------|
 | reason | string | 是 | 终止原因，长度 1~500 |
 
-### 13) 调度员手动标记阶段完成
+### 14) 调度员手动标记阶段完成
 
 ```http
 POST /api/dispatcher/orders/{order_id}/stages/{stage_id}/complete
@@ -902,7 +1036,7 @@ POST /api/dispatcher/orders/{order_id}/stages/{stage_id}/complete
 **说明：**
 - 返回最新订单详情对象。
 
-### 14) 我的订单列表参数补充（变更）
+### 15) 我的订单列表参数补充（变更）
 
 ```http
 GET /api/dispatcher/my-orders?search=关键词&status=completed
@@ -917,7 +1051,7 @@ GET /api/dispatcher/my-orders?search=关键词&status=completed
 **说明：**
 - 用于调度员“我的订单 / 已完成订单”分视图加载。
 
-### 15) 调度员工单中心列表（新增）
+### 16) 调度员工单中心列表（新增）
 
 ```http
 GET /api/dispatcher/work-orders?search=关键词&status=in_progress&sort_by=updated_at&sort_order=desc

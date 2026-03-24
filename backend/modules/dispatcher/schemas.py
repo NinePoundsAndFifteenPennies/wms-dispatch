@@ -155,6 +155,53 @@ class DispatcherWarehouseInventoryResponse(BaseModel):
     total: int
 
 
+class DispatcherInventoryFlowPointResponse(BaseModel):
+    date: str
+    movement_count: int
+    total_abs_delta: int
+
+
+class DispatcherInventoryFlowTrendResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    points: List[DispatcherInventoryFlowPointResponse]
+
+
+class DispatcherInventoryFlowNodeRecordResponse(BaseModel):
+    id: int
+    created_at: datetime
+    change_type: str
+    product_id: int
+    product_sku: str
+    product_name: str
+    delta_on_hand: int
+    delta_reserved: int
+    delta_locked: int
+    before_on_hand: int
+    before_reserved: int
+    before_locked: int
+    after_on_hand: int
+    after_reserved: int
+    after_locked: int
+    related_type: Optional[str] = None
+    related_id: Optional[int] = None
+    related_description: Optional[str] = None
+    operated_by: Optional[int] = None
+    operated_by_name: Optional[str] = None
+
+
+class DispatcherInventoryFlowNodeDetailResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    date: str
+    movement_count: int
+    total_abs_delta: int
+    positive_delta_on_hand: int
+    negative_delta_on_hand_abs: int
+    items: List[DispatcherInventoryFlowNodeRecordResponse]
+    total: int
+
+
 class DispatcherWorkerOptionResponse(BaseModel):
     id: int
     username: str

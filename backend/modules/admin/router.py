@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from modules.admin.schemas import (
     ActiveStatusUpdate,
     AdminDashboardOverviewResponse,
+    AdminInventoryFlowTrendListResponse,
     AdminWarehouseDispatcherPerformanceResponse,
     AdminWorkOrderListResponse,
     BatchDeleteRequest,
@@ -24,6 +25,7 @@ from modules.admin.schemas import (
     ProductResponse,
     ProductUpdate,
     StocktakeAdjustRequest,
+    InventoryFlowNodeDetailResponse,
     WarehouseInboundRequest,
     UserCreate, 
     UserUpdate, 
@@ -193,6 +195,30 @@ async def get_warehouse_inventory(
         page=page,
         page_size=page_size,
         search=search,
+    )
+
+
+@warehouses_router.get("/inventory-movements/trends", response_model=AdminInventoryFlowTrendListResponse)
+async def get_inventory_flow_trends(
+    days: int = Query(14, ge=1, le=90),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_inventory_flow_trends(days=days)
+
+
+@warehouses_router.get("/{warehouse_id}/inventory-movements/node-details", response_model=InventoryFlowNodeDetailResponse)
+async def get_warehouse_inventory_flow_node_details(
+    warehouse_id: int,
+    date: date,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_warehouse_inventory_flow_node_details(
+        warehouse_id=warehouse_id,
+        target_date=date,
+        page=page,
+        page_size=page_size,
     )
 
 

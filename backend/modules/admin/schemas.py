@@ -111,6 +111,57 @@ class WarehouseInventoryResponse(BaseModel):
     total: int
 
 
+class InventoryFlowPointResponse(BaseModel):
+    date: str
+    movement_count: int
+    total_abs_delta: int
+
+
+class WarehouseInventoryFlowTrendResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    points: List[InventoryFlowPointResponse]
+
+
+class AdminInventoryFlowTrendListResponse(BaseModel):
+    warehouses: List[WarehouseInventoryFlowTrendResponse]
+
+
+class InventoryFlowNodeRecordResponse(BaseModel):
+    id: int
+    created_at: datetime
+    change_type: str
+    product_id: int
+    product_sku: str
+    product_name: str
+    delta_on_hand: int
+    delta_reserved: int
+    delta_locked: int
+    before_on_hand: int
+    before_reserved: int
+    before_locked: int
+    after_on_hand: int
+    after_reserved: int
+    after_locked: int
+    related_type: Optional[str] = None
+    related_id: Optional[int] = None
+    related_description: Optional[str] = None
+    operated_by: Optional[int] = None
+    operated_by_name: Optional[str] = None
+
+
+class InventoryFlowNodeDetailResponse(BaseModel):
+    warehouse_id: int
+    warehouse_name: str
+    date: str
+    movement_count: int
+    total_abs_delta: int
+    positive_delta_on_hand: int
+    negative_delta_on_hand_abs: int
+    items: List[InventoryFlowNodeRecordResponse]
+    total: int
+
+
 class StocktakeAdjustRequest(BaseModel):
     qty_on_hand: Optional[int] = Field(
         default=None,

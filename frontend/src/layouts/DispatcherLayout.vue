@@ -116,6 +116,7 @@ const navItems = computed(() => [
   { path: '/dispatcher/orders', label: '接单中心', count: dispatcherStore.summary.pending_count },
   { path: '/dispatcher/my-orders', label: '我的订单', count: dispatcherStore.summary.my_orders_count },
   { path: '/dispatcher/inventory', label: '库存中心' },
+  { path: '/dispatcher/flow-records', label: '流水记录' },
   { path: '/dispatcher/work-orders', label: '工单中心' },
   { path: '/dispatcher/transfers', label: '调拨请求' },
 ])

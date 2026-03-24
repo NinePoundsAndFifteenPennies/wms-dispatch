@@ -7,6 +7,7 @@ import CustomersView from '../../views/admin/CustomersView.vue'
 import ProductsView from '../../views/admin/ProductsView.vue'
 import WarehousesView from '../../views/admin/WarehousesView.vue'
 import WarehouseInventoryView from '../../views/admin/WarehouseInventoryView.vue'
+import InventoryFlowRecordsView from '../../views/admin/InventoryFlowRecordsView.vue'
 
 export const adminRoutes = [
   {
@@ -48,6 +49,12 @@ export const adminRoutes = [
         path: 'warehouses/:id/inventory',
         name: 'warehouse-inventory',
         component: WarehouseInventoryView,
+        meta: { roles: ['admin'] },
+      },
+      {
+        path: 'flow-records',
+        name: 'admin-flow-records',
+        component: InventoryFlowRecordsView,
         meta: { roles: ['admin'] },
       },
       {

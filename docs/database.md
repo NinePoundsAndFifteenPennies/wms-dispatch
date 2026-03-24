@@ -170,6 +170,16 @@ resources/
 | operated_by | INTEGER | FK → users.id | 操作人 |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
 
+**流水记录页面统计口径（展示层约定）**：
+- 趋势图与日节点统计只计算 `delta_on_hand != 0` 的记录（真实库存变化）。
+- `delta_reserved`、`delta_locked` 仍保留在流水表中用于业务审计，但不纳入“实际库存流水”统计。
+
+**业务化说明映射（API 聚合约定）**：
+- `related_type='order'`：优先使用 `orders.order_no` + `orders.description/cancellation_reason`。
+- `related_type='transfer_order'`：使用 `transfer_orders` 的源/目标仓、SKU、数量、原因字段拼接操作文案。
+- `related_type='inbound_record'`：使用 `inbound_records` 及其来源调拨单信息生成说明。
+- `related_type='stocktake'`：使用 `stocktakes.reason`。
+
 ---
 
 ### 7. stocktakes（盘点事件表）

@@ -8,6 +8,7 @@ const DispatcherMyOrderDetailView = () => import('../../views/dispatcher/Dispatc
 const DispatcherWorkOrdersView = () => import('../../views/dispatcher/DispatcherWorkOrdersView.vue')
 const DispatcherTransfersView = () => import('../../views/dispatcher/DispatcherTransfersView.vue')
 const DispatcherInventoryView = () => import('../../views/dispatcher/DispatcherInventoryView.vue')
+const DispatcherFlowRecordsView = () => import('../../views/dispatcher/DispatcherFlowRecordsView.vue')
 
 export const dispatcherRoutes = [
   {
@@ -50,6 +51,12 @@ export const dispatcherRoutes = [
         name: 'dispatcher-inventory',
         component: DispatcherInventoryView,
         meta: { roles: ['dispatcher'], title: '库存中心' },
+      },
+      {
+        path: 'flow-records',
+        name: 'dispatcher-flow-records',
+        component: DispatcherFlowRecordsView,
+        meta: { roles: ['dispatcher'], title: '流水记录' },
       },
       {
         path: 'work-orders',

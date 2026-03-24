@@ -43,6 +43,14 @@ export const warehousesApi = {
     return http.get(`/admin/warehouses/${warehouseId}/inventory`, { params })
   },
 
+  getInventoryFlowTrends(params) {
+    return http.get('/admin/warehouses/inventory-movements/trends', { params })
+  },
+
+  getWarehouseInventoryFlowNodeDetails(warehouseId, params) {
+    return http.get(`/admin/warehouses/${warehouseId}/inventory-movements/node-details`, { params })
+  },
+
   adjustWarehouseInventoryStocktake(warehouseId, inventoryId, data) {
     return http.patch(`/admin/warehouses/${warehouseId}/inventory/${inventoryId}/stocktake`, {
       qty_on_hand: data.qty_on_hand,
