@@ -128,7 +128,10 @@
 
 ## 7. 技能等级设计 (Skill Level Design)
 
-技能等级为 0-10 之间的整数，0代表不会，数值越大代表技能越熟练。调度算法优先匹配技能等级满足要求且等级差距最小的工人。
+技能等级为 0-10 之间的整数，0代表不会，数值越大代表技能越熟练。（可以认为技能等级越高，完成的速度越快。可以给agent用如下函数拟合：speedup(skill) = 1 + (maxSpeedup - 1) × ln(1 + skill/maxSkill × (e - 1))
+
+estimatedTime(skill) = baseTime / speedup(skill)
+scoreForAgent(skill)  = speedup(skill)）调度算法优先匹配技能等级满足要求且等级差距最小的工人。
 
 ### 7.1 调度员手动派单技能口径（新增约束）
 
