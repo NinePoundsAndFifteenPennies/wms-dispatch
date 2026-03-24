@@ -15,13 +15,8 @@ class UserCreate(BaseModel):
     skill_shipping: Optional[int] = 0
 
 class UserUpdate(BaseModel):
-    username: Optional[str] = None
-    email: Optional[EmailStr] = None
     role: Optional[str] = None
     warehouse_id: Optional[int] = None
-    skill_picking: Optional[int] = 0
-    skill_staging: Optional[int] = 0
-    skill_shipping: Optional[int] = 0
 
 class UserStatusUpdate(BaseModel):
     is_active: bool
@@ -36,6 +31,9 @@ class UserResponse(BaseModel):
     skill_picking: int
     skill_staging: int
     skill_shipping: int
+    avatar: Optional[str] = None
+    phone: Optional[str] = None
+    description: Optional[str] = None
 
     class Config:
         from_attributes = True

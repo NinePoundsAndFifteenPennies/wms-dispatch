@@ -68,7 +68,7 @@
           
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="operator">
-              <el-icon><UserFilled /></el-icon>
+              <img class="operator-avatar" :src="profileAvatarUrl" alt="当前用户头像" />
               <div class="user-info">
                 <span class="user-name">{{ authStore.currentUser?.username || '未知用户' }}</span>
                 <span class="user-role">{{ formatRole(authStore.currentUser?.role) }}</span>
@@ -96,9 +96,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/common/http'
+import { getAvatarUrl } from '../utils/avatar'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,6 +136,8 @@ const backendStatusText = computed(() => {
   return '状态检测中...'
 })
 
+const profileAvatarUrl = computed(() => getAvatarUrl(authStore.currentUser?.avatar))
+
 const statusClass = computed(() => ({
   'status-online': backendStatus.value === 'online',
   'status-offline': backendStatus.value === 'offline',
@@ -153,7 +156,7 @@ function handleCommand(command) {
   if (command === 'logout') {
     logout()
   } else if (command === 'profile') {
-    // router.push('/profile')
+    router.push('/profile')
   }
 }
 
@@ -359,6 +362,13 @@ onUnmounted(() => {
 .operator:hover {
   background: #f7f9fc;
   border-color: #c5d0dc;
+}
+
+.operator-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .user-info {

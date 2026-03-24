@@ -1,6 +1,7 @@
 import WorkerLayout from '../../layouts/WorkerLayout.vue'
 import WorkerWorkOrdersView from '../../views/worker/WorkerWorkOrdersView.vue'
 import WorkerWorkOrderDetailView from '../../views/worker/WorkerWorkOrderDetailView.vue'
+import ProfileView from '../../views/common/ProfileView.vue'
 
 export const workerRoutes = [
   {
@@ -25,6 +26,12 @@ export const workerRoutes = [
         name: 'worker-work-order-detail',
         component: WorkerWorkOrderDetailView,
         meta: { roles: ['worker'], title: '工单详情' },
+      },
+      {
+        path: 'profile',
+        name: 'worker-profile',
+        component: ProfileView,
+        meta: { roles: ['worker'], title: '个人中心' },
       },
     ],
   },

@@ -26,6 +26,7 @@ class User(Base):
     skill_staging: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skill_shipping: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     avatar: Mapped[Optional[str]] = mapped_column(String(512))
+    phone: Mapped[Optional[str]] = mapped_column(String(32))
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

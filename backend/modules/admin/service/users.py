@@ -61,25 +61,18 @@ class UserServiceMixin:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        if user_data.role is None and user_data.warehouse_id is None:
+            raise HTTPException(status_code=400, detail="Only role and warehouse_id can be updated")
+
         curr_role = user_data.role if user_data.role is not None else user.role
         curr_wh = user_data.warehouse_id if user_data.warehouse_id is not None else user.warehouse_id
         if curr_role != "admin" and not curr_wh:
             raise HTTPException(status_code=400, detail="warehouse_id is required for non-admin users")
 
-        if user_data.username is not None:
-            user.username = user_data.username
-        if user_data.email is not None:
-            user.email = user_data.email
         if user_data.role is not None:
             user.role = user_data.role
         if user_data.warehouse_id is not None:
             user.warehouse_id = user_data.warehouse_id
-        if user_data.skill_picking is not None:
-            user.skill_picking = user_data.skill_picking
-        if user_data.skill_staging is not None:
-            user.skill_staging = user_data.skill_staging
-        if user_data.skill_shipping is not None:
-            user.skill_shipping = user_data.skill_shipping
 
         try:
             await self.session.commit()

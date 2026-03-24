@@ -25,12 +25,13 @@
         </div>
         <div class="header-actions">
           <div class="operator">
-            <el-icon><UserFilled /></el-icon>
+            <img class="operator-avatar" :src="profileAvatarUrl" alt="工人头像" />
             <div class="user-info">
               <span class="user-name">{{ authStore.currentUser?.username || '未知用户' }}</span>
               <span class="user-role">库房工人</span>
             </div>
           </div>
+          <el-button plain @click="goProfile">个人中心</el-button>
           <el-button type="danger" plain @click="logout">退出登录</el-button>
         </div>
       </el-header>
@@ -47,14 +48,20 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { List, UserFilled } from '@element-plus/icons-vue'
+import { List } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
+import { getAvatarUrl } from '../utils/avatar'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
 const activePath = computed(() => route.path)
+const profileAvatarUrl = computed(() => getAvatarUrl(authStore.currentUser?.avatar))
+
+function goProfile() {
+  router.push('/worker/profile')
+}
 
 function logout() {
   authStore.clearToken()
@@ -155,6 +162,13 @@ onMounted(() => {
   border-radius: 10px;
   border: 1px solid #d8e1eb;
   background: #fff;
+}
+
+.operator-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .user-info {

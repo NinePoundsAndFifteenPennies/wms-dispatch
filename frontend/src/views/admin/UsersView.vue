@@ -31,10 +31,7 @@
         <el-table-column type="selection" width="52" :selectable="isSelectableUser" />
         <el-table-column label="头像" width="84">
           <template #default="{ row }">
-            <el-avatar v-if="row.avatar" :src="row.avatar" :size="36" />
-            <el-avatar v-else :size="36">
-              <el-icon><UserFilled /></el-icon>
-            </el-avatar>
+            <el-avatar :src="getAvatarUrl(row.avatar)" :size="36" />
           </template>
         </el-table-column>
         <el-table-column prop="username" label="用户名" min-width="130" />
@@ -74,14 +71,20 @@
 
     <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增用户' : '编辑用户'" width="480px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
-        <el-form-item label="用户名" prop="username">
+        <el-form-item v-if="dialogMode === 'create'" label="用户名" prop="username">
           <el-input v-model="form.username" />
         </el-form-item>
-        <el-form-item label="邮箱" prop="email">
+        <el-form-item v-if="dialogMode === 'create'" label="邮箱" prop="email">
           <el-input v-model="form.email" />
         </el-form-item>
         <el-form-item label="密码" prop="password" v-if="dialogMode === 'create'">
           <el-input v-model="form.password" type="password" show-password />
+        </el-form-item>
+        <el-form-item v-if="dialogMode === 'edit'" label="用户名">
+          <el-input v-model="form.username" disabled />
+        </el-form-item>
+        <el-form-item v-if="dialogMode === 'edit'" label="邮箱">
+          <el-input v-model="form.email" disabled />
         </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="form.role" style="width: 100%">
@@ -100,7 +103,7 @@
             />
           </el-select>
         </el-form-item>
-        <template v-if="form.role === 'worker'">
+        <template v-if="dialogMode === 'create' && form.role === 'worker'">
           <el-form-item label="分拣技能" prop="skill_picking">
             <el-input-number v-model="form.skill_picking" :min="0" :max="10" />
           </el-form-item>
@@ -127,18 +130,14 @@
           <el-form ref="detailFormRef" :model="detailForm" :rules="detailRules" label-width="98px">
             <el-form-item label="头像">
               <div class="avatar-inline">
-                <el-avatar v-if="detailForm.avatar" :src="detailForm.avatar" :size="54" />
-                <el-avatar v-else :size="54">
-                  <el-icon><UserFilled /></el-icon>
-                </el-avatar>
-                <span class="placeholder-note">头像编辑功能待开放</span>
+                <el-avatar :src="getAvatarUrl(detailForm.avatar)" :size="54" />
               </div>
             </el-form-item>
             <el-form-item label="用户名" prop="username">
-              <el-input v-model="detailForm.username" :disabled="detailReadOnly" />
+              <el-input v-model="detailForm.username" disabled />
             </el-form-item>
             <el-form-item label="邮箱" prop="email">
-              <el-input v-model="detailForm.email" :disabled="detailReadOnly" />
+              <el-input v-model="detailForm.email" disabled />
             </el-form-item>
             <el-form-item label="角色" prop="role">
               <el-select v-model="detailForm.role" style="width: 100%" :disabled="detailReadOnly">
@@ -158,28 +157,16 @@
                 <el-option v-for="wh in warehouses" :key="wh.id" :label="wh.name" :value="wh.id" />
               </el-select>
             </el-form-item>
-            <template v-if="detailForm.role === 'worker'">
-              <el-form-item label="分拣技能" prop="skill_picking">
-                <el-input-number v-model="detailForm.skill_picking" :min="0" :max="10" :disabled="detailReadOnly" />
-              </el-form-item>
-              <el-form-item label="备货技能" prop="skill_staging">
-                <el-input-number v-model="detailForm.skill_staging" :min="0" :max="10" :disabled="detailReadOnly" />
-              </el-form-item>
-              <el-form-item label="发货技能" prop="skill_shipping">
-                <el-input-number v-model="detailForm.skill_shipping" :min="0" :max="10" :disabled="detailReadOnly" />
-              </el-form-item>
-            </template>
           </el-form>
         </el-card>
 
         <el-card shadow="never" class="detail-card">
           <template #header>
-            <span>个人资料（占位）</span>
+            <span>个人资料</span>
           </template>
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="昵称">待实现</el-descriptions-item>
-            <el-descriptions-item label="手机号">待实现</el-descriptions-item>
-            <el-descriptions-item label="个人简介">待实现</el-descriptions-item>
+            <el-descriptions-item label="手机号">{{ detailForm.phone || '未设置' }}</el-descriptions-item>
+            <el-descriptions-item label="个人简介">{{ detailForm.description || '未设置' }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
       </div>
@@ -194,9 +181,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, UserFilled } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { usersApi } from '../../api/admin/users'
 import { useAuthStore } from '../../stores/auth'
+import { getAvatarUrl } from '../../utils/avatar'
 
 const authStore = useAuthStore()
 const users = ref([])
@@ -238,6 +226,8 @@ const detailForm = reactive({
   skill_staging: 0,
   skill_shipping: 0,
   avatar: '',
+  phone: '',
+  description: '',
 })
 
 const rules = {
@@ -397,6 +387,8 @@ function openDetailDialog(row) {
   detailForm.skill_staging = row.skill_staging || 0
   detailForm.skill_shipping = row.skill_shipping || 0
   detailForm.avatar = row.avatar || ''
+  detailForm.phone = row.phone || ''
+  detailForm.description = row.description || ''
   detailVisible.value = true
   if (detailFormRef.value) detailFormRef.value.clearValidate()
 }
@@ -408,13 +400,8 @@ async function saveDetail() {
   detailSaving.value = true
   try {
     const payload = {
-      username: detailForm.username,
-      email: detailForm.email,
       role: detailForm.role,
       warehouse_id: detailForm.role === 'admin' ? null : detailForm.warehouse_id,
-      skill_picking: detailForm.role === 'worker' ? detailForm.skill_picking : 0,
-      skill_staging: detailForm.role === 'worker' ? detailForm.skill_staging : 0,
-      skill_shipping: detailForm.role === 'worker' ? detailForm.skill_shipping : 0,
     }
     await usersApi.updateUser(detailEditingId.value, payload)
     ElMessage.success('详情保存成功')
@@ -453,15 +440,20 @@ async function saveUser() {
 
   saving.value = true
   try {
-    const payload = {
-      username: form.username,
-      email: form.email,
-      role: form.role,
-      warehouse_id: form.role === 'admin' ? null : form.warehouse_id,
-      skill_picking: form.role === 'worker' ? form.skill_picking : 0,
-      skill_staging: form.role === 'worker' ? form.skill_staging : 0,
-      skill_shipping: form.role === 'worker' ? form.skill_shipping : 0,
-    }
+    const payload = dialogMode.value === 'create'
+      ? {
+          username: form.username,
+          email: form.email,
+          role: form.role,
+          warehouse_id: form.role === 'admin' ? null : form.warehouse_id,
+          skill_picking: form.role === 'worker' ? form.skill_picking : 0,
+          skill_staging: form.role === 'worker' ? form.skill_staging : 0,
+          skill_shipping: form.role === 'worker' ? form.skill_shipping : 0,
+        }
+      : {
+          role: form.role,
+          warehouse_id: form.role === 'admin' ? null : form.warehouse_id,
+        }
 
     if (dialogMode.value === 'create') {
       payload.password = form.password
@@ -526,11 +518,6 @@ p {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.placeholder-note {
-  color: #64748b;
-  font-size: 13px;
 }
 
 @media (max-width: 860px) {

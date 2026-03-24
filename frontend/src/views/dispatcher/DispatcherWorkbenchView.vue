@@ -89,7 +89,7 @@
               <p class="panel-label">本阶段工单 · {{ stageWorkOrders.length }} 张</p>
               <div class="task-list" v-if="stageWorkOrders.length > 0">
                 <article v-for="work in stageWorkOrders" :key="work.id" class="task-card">
-                  <span class="avatar">{{ firstChar(work.worker_name) }}</span>
+                  <img class="avatar" :src="getAvatarUrl(work.worker_avatar)" alt="工人头像" />
                   <div>
                     <strong>{{ work.worker_name }}</strong>
                     <p>{{ workOrderStatusText(work.status) }} · {{ priorityText(work.priority) }}</p>
@@ -154,6 +154,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
+import { getAvatarUrl } from '../../utils/avatar'
 import {
   compareCnDateDesc,
   formatCnDateTime,
@@ -385,11 +386,6 @@ function stageHint(order) {
   if (!detail?.stages?.length) return '阶段待加载'
   const active = detail.stages.find((item) => item.status !== 'completed')
   return active ? `${stageText(active.stage_type)} 阶段` : '阶段完成'
-}
-
-function firstChar(value) {
-  if (!value) return '?'
-  return String(value).slice(0, 1)
 }
 
 function priorityText(priority) {
@@ -786,12 +782,7 @@ onMounted(fetchWorkbench)
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #ece5d9;
-  color: #5c5246;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  object-fit: cover;
 }
 
 .status-tag {

@@ -9,6 +9,7 @@ const DispatcherWorkOrdersView = () => import('../../views/dispatcher/Dispatcher
 const DispatcherTransfersView = () => import('../../views/dispatcher/DispatcherTransfersView.vue')
 const DispatcherInventoryView = () => import('../../views/dispatcher/DispatcherInventoryView.vue')
 const DispatcherFlowRecordsView = () => import('../../views/dispatcher/DispatcherFlowRecordsView.vue')
+const ProfileView = () => import('../../views/common/ProfileView.vue')
 
 export const dispatcherRoutes = [
   {
@@ -69,6 +70,12 @@ export const dispatcherRoutes = [
         name: 'dispatcher-transfers',
         component: DispatcherTransfersView,
         meta: { roles: ['dispatcher'], title: '调拨请求' },
+      },
+      {
+        path: 'profile',
+        name: 'dispatcher-profile',
+        component: ProfileView,
+        meta: { roles: ['dispatcher'], title: '个人中心' },
       },
     ],
   },

@@ -51,7 +51,7 @@
 
           <el-dropdown trigger="click" @command="handleCommand">
             <button type="button" class="profile-chip">
-              <span class="profile-avatar">{{ profileName.slice(0, 1) }}</span>
+              <img class="profile-avatar" :src="profileAvatarUrl" alt="调度员头像" />
               <span>
                 <strong>{{ profileName }}</strong>
                 <small>调度员 / {{ warehouseTitle }}</small>
@@ -59,7 +59,7 @@
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人中心（占位）</el-dropdown-item>
+                <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                 <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -77,10 +77,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import http from '../api/common/http'
 import { useAuthStore } from '../stores/auth'
 import { useDispatcherStore } from '../stores/dispatcher'
+import { getAvatarUrl } from '../utils/avatar'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,6 +100,7 @@ function isNavActive(navPath) {
   return activePath.value === navPath || activePath.value.startsWith(navPath + '/')
 }
 const profileName = computed(() => authStore.currentUser?.username || '未知用户')
+const profileAvatarUrl = computed(() => getAvatarUrl(authStore.currentUser?.avatar))
 
 const backendStatusText = computed(() => {
   if (backendStatus.value === 'online') return '后端在线'
@@ -132,7 +133,7 @@ function handleCommand(command) {
     return
   }
   if (command === 'profile') {
-    ElMessage.info('个人中心功能暂未开放（占位）')
+    router.push('/dispatcher/profile')
   }
 }
 
@@ -406,12 +407,8 @@ onUnmounted(() => {
 .profile-avatar {
   width: 30px;
   height: 30px;
-  display: grid;
-  place-items: center;
   border-radius: 50%;
-  background: #d9d1c4;
-  font-size: 12px;
-  font-weight: 700;
+  object-fit: cover;
 }
 
 .profile-chip strong,

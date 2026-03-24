@@ -45,6 +45,7 @@ resources/
 | skill_shipping | INTEGER | NOT NULL, DEFAULT 0 | 发货装车技能等级 |
 | avatar | VARCHAR(512) | | 头像URL/路径 |
 | description | TEXT | | 用户描述/备注 |
+| phone | VARCHAR(32) | | 联系电话 |
 | is_active | BOOLEAN | NOT NULL, DEFAULT true | 账户是否激活（软禁用） |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 最后修改时间（国区时间口径） |

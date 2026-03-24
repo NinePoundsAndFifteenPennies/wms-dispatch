@@ -48,7 +48,7 @@ async def fetch_user_by_id(session: AsyncSession, user_id: int):
     result = await session.execute(
         text(
             """
-            SELECT id, username, email, role, warehouse_id, is_active
+            SELECT id, username, email, role, warehouse_id, avatar, phone, description, is_active
             FROM users
             WHERE id = :id
             LIMIT 1
