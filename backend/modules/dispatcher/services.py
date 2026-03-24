@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.agent.service.dispatch_agent_service import DispatcherAgentServiceMixin
 from modules.dispatcher.service.inventory_service import DispatcherInventoryServiceMixin
 from modules.dispatcher.service.order_service import DispatcherOrderServiceMixin
 from modules.dispatcher.service.transfer_service import DispatcherTransferServiceMixin
@@ -11,6 +12,7 @@ class DispatcherService(
     DispatcherOrderServiceMixin,
     DispatcherInventoryServiceMixin,
     DispatcherWorkOrderServiceMixin,
+    DispatcherAgentServiceMixin,
     DispatcherTransferServiceMixin,
 ):
     def __init__(self, session: AsyncSession):

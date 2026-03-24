@@ -25,7 +25,8 @@ http.interceptors.response.use(
     }
 
     const responseMessage = error.response?.data?.message
-    const message = responseMessage || error.message || 'Request failed'
+    const isTimeout = error?.code === 'ECONNABORTED' || /timeout/i.test(error?.message || '')
+    const message = responseMessage || (isTimeout ? '请求超时，请稍后重试' : (error.message || '请求失败'))
 
     ElMessage.error(message)
 

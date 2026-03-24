@@ -14,6 +14,13 @@ class Settings:
     jwt_algorithm: str = os.getenv('JWT_ALGORITHM', 'HS256')
     jwt_expire_hours: int = int(os.getenv('JWT_EXPIRE_HOURS', '24'))
     dispatcher_active_work_order_limit: int = int(os.getenv('DISPATCHER_ACTIVE_WORK_ORDER_LIMIT', '5'))
+    bailian_api_key: str = os.getenv('DASHSCOPE_API_KEY', '').strip()
+    bailian_base_url: str = os.getenv('BAILIAN_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1').strip()
+    bailian_planner_model: str = os.getenv('BAILIAN_PLANNER_MODEL', 'qwen3.5-plus').strip()
+    bailian_fast_model: str = os.getenv('BAILIAN_FAST_MODEL', 'qwen3.5-flash').strip()
+    bailian_timeout_seconds: int = int(os.getenv('BAILIAN_TIMEOUT_SECONDS', '20'))
+    bailian_refine_timeout_seconds: int = int(os.getenv('BAILIAN_REFINE_TIMEOUT_SECONDS', '6'))
+    cors_allow_origins_raw: str = os.getenv('CORS_ALLOW_ORIGINS', '*').strip()
 
     def __init__(self) -> None:
         if not self.database_url:
@@ -27,6 +34,17 @@ class Settings:
             raise RuntimeError('DATABASE_URL is invalid: missing database name')
         if self.dispatcher_active_work_order_limit < 1:
             raise RuntimeError('DISPATCHER_ACTIVE_WORK_ORDER_LIMIT must be >= 1')
+        if self.bailian_timeout_seconds < 1:
+            raise RuntimeError('BAILIAN_TIMEOUT_SECONDS must be >= 1')
+        if self.bailian_refine_timeout_seconds < 1:
+            raise RuntimeError('BAILIAN_REFINE_TIMEOUT_SECONDS must be >= 1')
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        raw = self.cors_allow_origins_raw
+        if not raw:
+            return ['*']
+        return [item.strip() for item in raw.split(',') if item.strip()]
 
 
 settings = Settings()

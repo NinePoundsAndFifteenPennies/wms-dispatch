@@ -1,0 +1,659 @@
+import asyncio
+import logging
+import math
+
+from fastapi import HTTPException
+from sqlalchemy import text
+
+from modules.agent.bailian_provider import BailianProvider
+from modules.agent.skill_loader import AgentSkillLoader
+from modules.dispatcher.schemas import (
+    DispatcherAgentConfirmStageResultResponse,
+    DispatcherAgentConfirmWorkOrderRequest,
+    DispatcherAgentConfirmWorkOrderResponse,
+    DispatcherAgentStageSuggestionResponse,
+    DispatcherAgentSuggestWorkOrderRequest,
+    DispatcherAgentSuggestWorkOrderResponse,
+    DispatcherAgentWorkerScoreResponse,
+    DispatcherAgentWorkerSummaryResponse,
+    DispatcherCreateWorkOrderRequest,
+    DispatcherOrderWorkOrderResponse,
+    DispatcherWorkOrderRiskResponse,
+)
+from modules.shared.config import settings
+
+
+logger = logging.getLogger(__name__)
+
+
+class DispatcherAgentServiceMixin:
+    _SKILL_FILES = ("order-dispatchSkill.md", "worker-scoreSkill.md")
+    _STAGE_ORDER = {"picking": 1, "staging": 2, "shipping": 3}
+    _MAX_SKILL = 10
+    _MAX_SPEEDUP = 3.0
+    _LOAD_FACTOR = 0.4
+    _skill_context_cache: str | None = None
+
+    @staticmethod
+    def _sanitize_guidance_text(text: str | None) -> str | None:
+        if text is None:
+            return None
+        # Remove any internal agent metadata lines before exposing to workers.
+        lines = [line for line in text.splitlines() if not line.strip().startswith("[agent-guidance]")]
+        cleaned = "\n".join(lines).strip()
+        return cleaned or None
+
+    @staticmethod
+    def _build_guidance_text(
+        *,
+        order_no: str,
+        stage_type: str,
+        required_skill_min: int,
+        required_skill_max: int,
+        worker_skill: int,
+        skill_products: list[dict],
+        intent: str | None,
+    ) -> str:
+        low_skill_products = [item["product_name"] for item in skill_products if item["required_skill"] > worker_skill]
+        high_risk_text = ", ".join(low_skill_products[:4]) if low_skill_products else "无"
+
+        lines = [
+            "目标：安全、准确地完成当前阶段任务。",
+            "建议步骤：",
+            "1) 先处理难度较低商品，保持稳定吞吐。",
+            "2) 对不确定项及时标记，并尽快与调度员同步。",
+            "3) 每个批次后更新进度，避免超时。",
+            "禁止事项：",
+            "1) 不要处理超出当前技能边界的任务。",
+            "2) 未经调度员批准，不得变更任务范围。",
+            f"高风险商品/任务：{high_risk_text}。",
+        ]
+        if intent:
+            lines.append(f"调度意图：{intent.strip()[:200]}")
+        return "\n".join(lines)
+
+    @classmethod
+    def _next_priority(cls, priority: str) -> str:
+        if priority == "low":
+            return "medium"
+        if priority == "medium":
+            return "high"
+        return "high"
+
+    @classmethod
+    def _prev_priority(cls, priority: str) -> str:
+        if priority == "high":
+            return "medium"
+        if priority == "medium":
+            return "low"
+        return "low"
+
+    @classmethod
+    def _decide_agent_priority(cls, *, order_priority: str, timeout_revert_count: int, stage_row: dict, stages_by_type: dict) -> str:
+        priority = order_priority if order_priority in {"low", "medium", "high"} else "medium"
+
+        if timeout_revert_count >= 2 and priority in {"low", "medium"}:
+            priority = "high"
+        elif timeout_revert_count >= 1 and priority == "medium":
+            priority = "high"
+
+        if stage_row["stage_type"] == "shipping":
+            picking_completed = stages_by_type.get("picking", {}).get("status") == "completed"
+            staging_completed = stages_by_type.get("staging", {}).get("status") == "completed"
+            if picking_completed and staging_completed:
+                priority = cls._next_priority(priority)
+
+        previous_stage_type = {
+            "staging": "picking",
+            "shipping": "staging",
+        }.get(stage_row["stage_type"])
+        if stage_row["status"] == "not_started" and previous_stage_type:
+            previous_completed = stages_by_type.get(previous_stage_type, {}).get("status") == "completed"
+            if not previous_completed:
+                priority = cls._prev_priority(priority)
+
+        return priority
+
+    @classmethod
+    def _calculate_worker_score(cls, *, skill_level: int, pending_count: int, in_progress_count: int) -> dict:
+        normalized_skill = max(0, min(int(skill_level), cls._MAX_SKILL))
+        speedup = 1 + (cls._MAX_SPEEDUP - 1) * math.log(
+            1 + (normalized_skill / cls._MAX_SKILL) * (math.e - 1)
+        )
+        eff_norm = (speedup - 1) / (cls._MAX_SPEEDUP - 1)
+        load = float(in_progress_count) * 1.0 + float(pending_count) * 0.5
+        load_penalty = 1 / (1 + load * cls._LOAD_FACTOR)
+        final_score = eff_norm * 100 * load_penalty
+        return {
+            "speedup": round(speedup, 4),
+            "load": round(load, 4),
+            "load_penalty": round(load_penalty, 4),
+            "final_score": round(final_score, 4),
+        }
+
+    async def _list_order_stages(self, order_id: int) -> list[dict]:
+        stages_result = await self.session.execute(
+            text(
+                """
+                SELECT id, stage_type, status
+                FROM order_stages
+                WHERE order_id = :order_id
+                ORDER BY
+                    CASE stage_type
+                        WHEN 'picking' THEN 1
+                        WHEN 'staging' THEN 2
+                        WHEN 'shipping' THEN 3
+                        ELSE 99
+                    END,
+                    id ASC
+                """
+            ),
+            {"order_id": order_id},
+        )
+        stages = [dict(row) for row in stages_result.mappings().all()]
+        if not stages:
+            raise HTTPException(status_code=404, detail="Order stages not found")
+        return stages
+
+    async def _get_stage_work_order_counts(self, order_id: int) -> dict[int, int]:
+        result = await self.session.execute(
+            text(
+                """
+                SELECT stage_id, COUNT(*)::INTEGER AS total_count
+                FROM work_orders
+                WHERE order_id = :order_id
+                GROUP BY stage_id
+                """
+            ),
+            {"order_id": order_id},
+        )
+        return {int(row["stage_id"]): int(row["total_count"]) for row in result.mappings().all()}
+
+    async def _try_refine_guidance_with_llm(self, raw_text: str, *, strict: bool = False) -> str:
+        if not BailianProvider.is_enabled():
+            if strict:
+                raise HTTPException(status_code=400, detail="未配置 DASHSCOPE_API_KEY，无法生成 AI 工单描述")
+            return raw_text
+
+        if strict:
+            system_prompt = (
+                "你是 WMS 调度系统的工单指导助手。\n"
+                "请将输入重写为简洁、可执行、面向工人的指导语，必须保持事实和边界不变。\n"
+                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
+                "不得臆造库存、状态机或权限规则。"
+            )
+        else:
+            if self._skill_context_cache is None:
+                self._skill_context_cache = AgentSkillLoader.load_skills(list(self._SKILL_FILES))
+            skill_context = self._skill_context_cache
+            system_prompt = (
+                "你是 WMS 调度系统的工单指导助手。\n"
+                "请将输入重写为简洁、面向工人的指导语，必须保持事实和边界不变。\n"
+                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
+                "不得臆造库存、状态机或权限规则。\n\n"
+                f"{skill_context}"
+            )
+        user_prompt = f"请在不改变边界的前提下优化以下工单指导语：\n\n{raw_text}"
+
+        timeout_seconds = settings.bailian_refine_timeout_seconds
+        try:
+            return await asyncio.wait_for(
+                BailianProvider.chat_completion(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    model=settings.bailian_fast_model,
+                    temperature=0.1,
+                ),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            if strict:
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"AI 工单描述生成超时（>{timeout_seconds}s），请稍后重试",
+                )
+            logger.warning("LLM refinement timed out after %ss, fallback to raw guidance", timeout_seconds)
+            return raw_text
+        except Exception as exc:
+            if strict:
+                raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{exc}")
+            logger.warning("LLM refinement failed, fallback to raw guidance: %s", exc)
+            return raw_text
+
+    async def _build_order_stage_suggestions(
+        self,
+        *,
+        order_id: int,
+        user_id: int,
+        payload: DispatcherAgentSuggestWorkOrderRequest,
+        refine_guidance: bool = True,
+        require_llm_guidance: bool = False,
+    ) -> list[dict]:
+        order_base = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
+        if order_base["status"] != "in_progress":
+            raise HTTPException(status_code=400, detail="仅进行中的订单可使用 Agent 派单")
+
+        order_meta_result = await self.session.execute(
+            text(
+                """
+                SELECT id, order_no, priority, timeout_revert_count
+                FROM orders
+                WHERE id = :order_id
+                LIMIT 1
+                """
+            ),
+            {"order_id": order_id},
+        )
+        order_meta = order_meta_result.mappings().first()
+        if not order_meta:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        all_stages = await self._list_order_stages(order_id=order_id)
+        stages = [row for row in all_stages if row["status"] != "completed"]
+        stages.sort(key=lambda row: self._STAGE_ORDER.get(row["stage_type"], 99))
+        stages_by_type = {row["stage_type"]: row for row in all_stages}
+
+        workers = await self.list_workers(user_id=user_id, search=payload.search_worker)
+        stage_work_order_counts = await self._get_stage_work_order_counts(order_id=order_id)
+
+        suggestions: list[dict] = []
+        for stage in stages:
+            stage_id = int(stage["id"])
+            existing_count = stage_work_order_counts.get(stage_id, 0)
+            if existing_count > 0:
+                suggestions.append(
+                    {
+                        "stage_id": stage_id,
+                        "stage_type": stage["stage_type"],
+                        "assignable": False,
+                        "reason": "该阶段已存在工单",
+                        "required_skill_min": 0,
+                        "required_skill_max": 0,
+                        "has_risk": False,
+                        "risks": [],
+                        "worker": None,
+                        "score": None,
+                        "priority": None,
+                        "suggested_description": None,
+                    }
+                )
+                continue
+
+            if not workers:
+                suggestions.append(
+                    {
+                        "stage_id": stage_id,
+                        "stage_type": stage["stage_type"],
+                        "assignable": False,
+                        "reason": "当前仓库无可用工人",
+                        "required_skill_min": 0,
+                        "required_skill_max": 0,
+                        "has_risk": False,
+                        "risks": [],
+                        "worker": None,
+                        "score": None,
+                        "priority": None,
+                        "suggested_description": None,
+                    }
+                )
+                continue
+
+            candidate_rows: list[dict] = []
+            for worker in workers:
+                try:
+                    assessment = await self._assess_work_order_assignment(
+                        order_id=order_id,
+                        user_id=user_id,
+                        stage_id=stage_id,
+                        worker_id=worker["id"],
+                    )
+                except HTTPException:
+                    continue
+
+                score = self._calculate_worker_score(
+                    skill_level=assessment["worker_skill"],
+                    pending_count=assessment["pending_count"],
+                    in_progress_count=assessment["in_progress_count"],
+                )
+                candidate_rows.append(
+                    {
+                        "stage_id": stage_id,
+                        "stage_type": assessment["stage_row"]["stage_type"],
+                        "required_skill_min": assessment["required_skill_min"],
+                        "required_skill_max": assessment["required_skill_max"],
+                        "has_risk": len(assessment["risks"]) > 0,
+                        "risks": assessment["risks"],
+                        "skill_products": assessment["skill_products"],
+                        "worker": {
+                            "worker_id": int(worker["id"]),
+                            "worker_name": worker["username"],
+                            "worker_skill": int(assessment["worker_skill"]),
+                            "pending_count": int(assessment["pending_count"]),
+                            "in_progress_count": int(assessment["in_progress_count"]),
+                            "active_work_order_count": int(assessment["active_work_order_count"]),
+                            "active_work_order_limit": int(self.active_work_order_limit),
+                        },
+                        "score": score,
+                    }
+                )
+
+            if not candidate_rows:
+                suggestions.append(
+                    {
+                        "stage_id": stage_id,
+                        "stage_type": stage["stage_type"],
+                        "assignable": False,
+                        "reason": "无工人满足该阶段最低技能要求",
+                        "required_skill_min": 0,
+                        "required_skill_max": 0,
+                        "has_risk": False,
+                        "risks": [],
+                        "worker": None,
+                        "score": None,
+                        "priority": None,
+                        "suggested_description": None,
+                    }
+                )
+                continue
+
+            candidate_rows.sort(key=lambda item: (-item["score"]["final_score"], item["worker"]["worker_id"]))
+            selected = candidate_rows[0]
+
+            priority = self._decide_agent_priority(
+                order_priority=str(order_meta["priority"]),
+                timeout_revert_count=int(order_meta.get("timeout_revert_count") or 0),
+                stage_row=stage,
+                stages_by_type=stages_by_type,
+            )
+            raw_guidance = self._build_guidance_text(
+                order_no=str(order_meta["order_no"]),
+                stage_type=selected["stage_type"],
+                required_skill_min=selected["required_skill_min"],
+                required_skill_max=selected["required_skill_max"],
+                worker_skill=selected["worker"]["worker_skill"],
+                skill_products=selected["skill_products"],
+                intent=payload.intent,
+            )
+            final_guidance = raw_guidance
+            if refine_guidance:
+                final_guidance = await self._try_refine_guidance_with_llm(
+                    raw_guidance,
+                    strict=require_llm_guidance,
+                )
+            final_guidance = self._sanitize_guidance_text(final_guidance)
+
+            suggestions.append(
+                {
+                    "stage_id": stage_id,
+                    "stage_type": selected["stage_type"],
+                    "assignable": True,
+                    "reason": None,
+                    "required_skill_min": selected["required_skill_min"],
+                    "required_skill_max": selected["required_skill_max"],
+                    "has_risk": selected["has_risk"],
+                    "risks": selected["risks"],
+                    "worker": selected["worker"],
+                    "score": selected["score"],
+                    "priority": priority,
+                    "suggested_description": final_guidance,
+                }
+            )
+
+        return suggestions
+
+    async def _insert_agent_work_order_without_commit(
+        self,
+        *,
+        order_id: int,
+        user_id: int,
+        stage_id: int,
+        worker_id: int,
+        priority: str,
+        description: str | None,
+        override_reason: str | None,
+    ) -> int:
+        payload = DispatcherCreateWorkOrderRequest(
+            stage_id=stage_id,
+            worker_id=worker_id,
+            priority=priority,
+            deadline=None,
+            description=description,
+            override_reason=override_reason,
+            source="agent",
+        )
+
+        assessment = await self._assess_work_order_assignment(
+            order_id=order_id,
+            user_id=user_id,
+            stage_id=payload.stage_id,
+            worker_id=payload.worker_id,
+        )
+        order_row = assessment["order_row"]
+        stage_row = assessment["stage_row"]
+        risks = assessment["risks"]
+
+        normalized_override_reason = (payload.override_reason or "").strip()
+        if risks and not normalized_override_reason:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "存在风险，必须填写 override_reason",
+                    "risk_codes": [item["code"] for item in risks],
+                    "risks": risks,
+                },
+            )
+
+        previous_stage_type = {
+            "staging": "picking",
+            "shipping": "staging",
+        }.get(stage_row["stage_type"])
+        previous_stage_id = None
+        if previous_stage_type:
+            previous_stage_result = await self.session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM order_stages
+                    WHERE order_id = :order_id
+                      AND stage_type = :stage_type
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "order_id": order_id,
+                    "stage_type": previous_stage_type,
+                },
+            )
+            previous_stage = previous_stage_result.mappings().first()
+            previous_stage_id = previous_stage["id"] if previous_stage else None
+
+        normalized_description = payload.description.strip() if payload.description else None
+        normalized_description = self._sanitize_guidance_text(normalized_description)
+        if risks:
+            risk_codes = ",".join(item["code"] for item in risks)
+            audit_prefix = f"[override][{risk_codes}] {normalized_override_reason}"
+            normalized_description = f"{audit_prefix}\n{normalized_description}" if normalized_description else audit_prefix
+
+        insert_result = await self.session.execute(
+            text(
+                """
+                INSERT INTO work_orders (
+                    order_id,
+                    stage_id,
+                    worker_id,
+                    dispatcher_id,
+                    warehouse_id,
+                    status,
+                    priority,
+                    deadline,
+                    description,
+                    source,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :order_id,
+                    :stage_id,
+                    :worker_id,
+                    :dispatcher_id,
+                    :warehouse_id,
+                    'pending',
+                    :priority,
+                    :deadline,
+                    :description,
+                    :source,
+                    (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
+                    (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "order_id": order_id,
+                "stage_id": payload.stage_id,
+                "worker_id": payload.worker_id,
+                "dispatcher_id": user_id,
+                "warehouse_id": order_row["warehouse_id"],
+                "priority": payload.priority,
+                "deadline": payload.deadline,
+                "description": normalized_description,
+                "source": payload.source,
+            },
+        )
+        new_row = insert_result.mappings().first()
+        if not new_row:
+            raise HTTPException(status_code=409, detail="Failed to create work order")
+
+        if previous_stage_id is not None:
+            await self._try_auto_complete_stage(stage_id=previous_stage_id, operated_by=user_id)
+
+        return int(new_row["id"])
+
+    async def suggest_work_order_by_agent(
+        self,
+        *,
+        order_id: int,
+        user_id: int,
+        payload: DispatcherAgentSuggestWorkOrderRequest,
+    ) -> DispatcherAgentSuggestWorkOrderResponse:
+        suggestions = await self._build_order_stage_suggestions(order_id=order_id, user_id=user_id, payload=payload)
+        stage_items: list[DispatcherAgentStageSuggestionResponse] = []
+        for stage in suggestions:
+            worker = (
+                DispatcherAgentWorkerSummaryResponse(**stage["worker"]) if stage["worker"] is not None else None
+            )
+            score = DispatcherAgentWorkerScoreResponse(**stage["score"]) if stage["score"] is not None else None
+            risks = [DispatcherWorkOrderRiskResponse(**risk) for risk in stage["risks"]]
+            stage_items.append(
+                DispatcherAgentStageSuggestionResponse(
+                    stage_id=stage["stage_id"],
+                    stage_type=stage["stage_type"],
+                    assignable=stage["assignable"],
+                    reason=stage["reason"],
+                    required_skill_min=stage["required_skill_min"],
+                    required_skill_max=stage["required_skill_max"],
+                    has_risk=stage["has_risk"],
+                    risks=risks,
+                    worker=worker,
+                    score=score,
+                    priority=stage["priority"],
+                    suggested_description=stage["suggested_description"],
+                )
+            )
+        return DispatcherAgentSuggestWorkOrderResponse(order_id=order_id, stages=stage_items)
+
+    async def confirm_agent_work_order(
+        self,
+        *,
+        order_id: int,
+        user_id: int,
+        payload: DispatcherAgentConfirmWorkOrderRequest,
+    ) -> DispatcherAgentConfirmWorkOrderResponse:
+        suggest_payload = DispatcherAgentSuggestWorkOrderRequest(
+            intent=payload.intent,
+            search_worker=None,
+        )
+        suggestions = await self._build_order_stage_suggestions(
+            order_id=order_id,
+            user_id=user_id,
+            payload=suggest_payload,
+            refine_guidance=True,
+            require_llm_guidance=True,
+        )
+
+        override_map = {
+            int(item.stage_id): (item.override_reason.strip() if item.override_reason else None)
+            for item in payload.stage_overrides
+        }
+
+        created_work_order_ids: list[int] = []
+        stage_results: list[DispatcherAgentConfirmStageResultResponse] = []
+        try:
+            for stage in suggestions:
+                risks = [DispatcherWorkOrderRiskResponse(**risk) for risk in stage["risks"]]
+                if not stage["assignable"]:
+                    stage_results.append(
+                        DispatcherAgentConfirmStageResultResponse(
+                            stage_id=stage["stage_id"],
+                            stage_type=stage["stage_type"],
+                            status="unassignable",
+                            reason=stage["reason"],
+                            has_risk=False,
+                            risks=[],
+                            work_order_id=None,
+                        )
+                    )
+                    continue
+
+                stage_id = int(stage["stage_id"])
+                if stage["has_risk"] and not override_map.get(stage_id):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": f"阶段 {stage['stage_type']} 存在风险，必须填写 override_reason",
+                            "stage_id": stage_id,
+                            "risk_codes": [risk.code for risk in risks],
+                            "risks": [risk.model_dump() for risk in risks],
+                        },
+                    )
+
+                worker_id = int(stage["worker"]["worker_id"])
+                work_order_id = await self._insert_agent_work_order_without_commit(
+                    order_id=order_id,
+                    user_id=user_id,
+                    stage_id=stage_id,
+                    worker_id=worker_id,
+                    priority=stage["priority"] or "medium",
+                    description=stage["suggested_description"],
+                    override_reason=override_map.get(stage_id),
+                )
+                created_work_order_ids.append(work_order_id)
+                stage_results.append(
+                    DispatcherAgentConfirmStageResultResponse(
+                        stage_id=stage_id,
+                        stage_type=stage["stage_type"],
+                        status="created",
+                        reason=None,
+                        has_risk=stage["has_risk"],
+                        risks=risks,
+                        work_order_id=work_order_id,
+                    )
+                )
+
+            await self.session.commit()
+        except HTTPException:
+            await self.session.rollback()
+            raise
+        except Exception:
+            await self.session.rollback()
+            raise
+
+        created_work_orders: list[DispatcherOrderWorkOrderResponse] = []
+        for work_order_id in created_work_order_ids:
+            work_order = await self._get_work_order_detail(work_order_id=work_order_id)
+            created_work_orders.append(DispatcherOrderWorkOrderResponse(**work_order))
+
+        return DispatcherAgentConfirmWorkOrderResponse(
+            order_id=order_id,
+            created_work_orders=created_work_orders,
+            stages=stage_results,
+        )

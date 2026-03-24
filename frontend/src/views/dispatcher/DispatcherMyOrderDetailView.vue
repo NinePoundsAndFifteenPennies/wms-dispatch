@@ -72,6 +72,103 @@
       </el-table>
     </DetailInfoBlock>
 
+    <DetailInfoBlock title="Agent 派单助手" v-if="detail?.status === 'in_progress'">
+      <div class="agent-assistant">
+        <div class="agent-head">
+          <span class="agent-robot">🤖</span>
+          <div>
+            <p class="agent-title">智能派单建议</p>
+            <p class="agent-subtitle">仅支持“进行中且尚未创建任何工单”的订单。</p>
+          </div>
+        </div>
+
+        <el-alert
+          v-if="!canUseAgentAssistant"
+          type="warning"
+          :closable="false"
+          :title="agentDisabledReason"
+          show-icon
+        />
+
+        <template v-else>
+          <el-form label-width="100px" class="agent-form">
+            <el-form-item label="调度意图">
+              <el-input
+                v-model="agentIntent"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                show-word-limit
+                placeholder="例如：优先时效，先安排熟悉发货复核的工人"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="agentSuggesting" @click="handleAgentSuggest">生成建议</el-button>
+            </el-form-item>
+          </el-form>
+
+          <div v-if="agentSuggestion" class="agent-result">
+            <p class="summary-text">
+              本次建议共 {{ agentSuggestionStages.length }} 个阶段，可分配 {{ agentAssignableStages.length }} 个阶段。
+            </p>
+
+            <div class="agent-stage-list" v-if="agentSuggestionStages.length">
+              <div class="agent-stage-card" v-for="stage in agentSuggestionStages" :key="stage.stage_id">
+                <div class="agent-stage-head">
+                  <p class="agent-stage-title">{{ stageText(stage.stage_type) }}阶段</p>
+                  <el-tag :type="stage.assignable ? 'success' : 'warning'" size="small">
+                    {{ stage.assignable ? '可分配' : '不可分配' }}
+                  </el-tag>
+                </div>
+
+                <template v-if="stage.assignable">
+                  <p class="summary-text">
+                    工人 {{ stage.worker?.worker_name || '-' }}（ID: {{ stage.worker?.worker_id || '-' }}），技能 {{ stage.worker?.worker_skill || '-' }}，
+                    阶段要求 {{ stage.required_skill_min }} - {{ stage.required_skill_max }}，建议优先级 {{ priorityText(stage.priority) }}。
+                  </p>
+
+                  <ul class="risk-list" v-if="stage.risks?.length">
+                    <li v-for="risk in stage.risks" :key="`${stage.stage_id}-${risk.code}`">{{ formatRiskMessage(risk) }}</li>
+                  </ul>
+
+                  <el-form label-width="100px" class="agent-form">
+                    <el-form-item label="建议描述">
+                      <el-input
+                        :model-value="stage.suggested_description || '无建议描述'"
+                        type="textarea"
+                        :rows="4"
+                        readonly
+                      />
+                    </el-form-item>
+                    <el-form-item label="覆盖原因" v-if="stage.has_risk">
+                      <el-input
+                        v-model="agentStageOverrides[stage.stage_id]"
+                        type="textarea"
+                        :rows="2"
+                        maxlength="500"
+                        show-word-limit
+                        placeholder="存在风险时必须填写"
+                      />
+                    </el-form-item>
+                  </el-form>
+                </template>
+
+                <template v-else>
+                  <p class="summary-text">原因：{{ stage.reason || '无可用工人' }}</p>
+                </template>
+              </div>
+            </div>
+
+            <el-form label-width="100px" class="agent-form">
+              <el-form-item>
+                <el-button type="success" :loading="agentConfirming" @click="handleAgentConfirm">确认并创建工单</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </template>
+      </div>
+    </DetailInfoBlock>
+
     <DetailInfoBlock title="创建工单" v-if="detail">
       <el-form :model="createForm" label-width="100px" class="create-form">
         <el-form-item label="阶段">
@@ -270,6 +367,11 @@ const manualCompleteRemark = ref('')
 const cancelReason = ref('')
 const assignmentPrecheck = ref(null)
 const overrideReason = ref('')
+const agentSuggesting = ref(false)
+const agentConfirming = ref(false)
+const agentIntent = ref('')
+const agentSuggestion = ref(null)
+const agentStageOverrides = ref({})
 
 const createForm = ref({
   stage_id: null,
@@ -343,6 +445,29 @@ const hasSkillGapRisk = computed(() => {
   return (assignmentPrecheck.value?.risks || []).some((item) => item.code === 'skill_gap')
 })
 
+const canUseAgentAssistant = computed(() => {
+  if (!detail.value || detail.value.status !== 'in_progress') return false
+  return workOrders.value.length === 0
+})
+
+const agentSuggestionStages = computed(() => {
+  return Array.isArray(agentSuggestion.value?.stages) ? agentSuggestion.value.stages : []
+})
+
+const agentAssignableStages = computed(() => {
+  return agentSuggestionStages.value.filter((stage) => stage.assignable)
+})
+
+const agentDisabledReason = computed(() => {
+  if (!detail.value || detail.value.status !== 'in_progress') {
+    return '仅进行中订单可使用 Agent 派单助手'
+  }
+  if (workOrders.value.length > 0) {
+    return '该订单已存在工单，Agent 助手已禁用，请继续在下方手动管理工单'
+  }
+  return ''
+})
+
 const workerSelectNoDataText = computed(() => {
   if (!selectedStageDetail.value) {
     return '请先选择阶段'
@@ -391,10 +516,97 @@ async function fetchDetail() {
     }
     ensureValidWorkerSelection()
     await handleAssignmentSelectionChange()
+    if (!canUseAgentAssistant.value) {
+      agentSuggestion.value = null
+      agentStageOverrides.value = {}
+    }
   } catch (error) {
     ElMessage.error(error.response?.data?.message || '获取订单详情失败，请稍后重试')
   } finally {
     loading.value = false
+  }
+}
+
+function resolveApiErrorMessage(error, fallbackText) {
+  const detailPayload = error?.response?.data?.detail
+  if (typeof detailPayload === 'string') return detailPayload
+  if (detailPayload?.message) return detailPayload.message
+  return error?.response?.data?.message || fallbackText
+}
+
+async function handleAgentSuggest() {
+  if (!canUseAgentAssistant.value) {
+    ElMessage.warning(agentDisabledReason.value || '当前订单不可使用 Agent')
+    return
+  }
+  agentSuggesting.value = true
+  try {
+    const payload = {}
+    if (agentIntent.value.trim()) payload.intent = agentIntent.value.trim()
+    const res = await dispatcherOrdersApi.suggestWorkOrderByAgent(route.params.orderId, payload)
+    agentSuggestion.value = res.data
+    const overrides = {}
+    for (const stage of Array.isArray(res.data?.stages) ? res.data.stages : []) {
+      if (stage.assignable && stage.has_risk) {
+        overrides[stage.stage_id] = ''
+      }
+    }
+    agentStageOverrides.value = overrides
+    ElMessage.success('Agent 建议已生成')
+  } catch (error) {
+    ElMessage.error(resolveApiErrorMessage(error, '生成 Agent 建议失败'))
+  } finally {
+    agentSuggesting.value = false
+  }
+}
+
+async function handleAgentConfirm() {
+  if (!agentSuggestion.value || !agentSuggestionStages.value.length) {
+    ElMessage.warning('请先生成 Agent 建议')
+    return
+  }
+  if (!agentAssignableStages.value.length) {
+    ElMessage.warning('当前建议中没有可创建工单的阶段')
+    return
+  }
+
+  const missingOverrideStages = agentAssignableStages.value.filter((stage) => {
+    if (!stage.has_risk) return false
+    const reason = (agentStageOverrides.value?.[stage.stage_id] || '').trim()
+    return !reason
+  })
+  if (missingOverrideStages.length) {
+    ElMessage.warning(`存在风险阶段未填写覆盖原因：${missingOverrideStages.map((s) => stageText(s.stage_type)).join('、')}`)
+    return
+  }
+
+  agentConfirming.value = true
+  try {
+    const stage_overrides = agentAssignableStages.value
+      .filter((stage) => stage.has_risk)
+      .map((stage) => ({
+        stage_id: stage.stage_id,
+        override_reason: (agentStageOverrides.value?.[stage.stage_id] || '').trim(),
+      }))
+
+    const payload = {
+      stage_overrides,
+    }
+    if (agentIntent.value.trim()) {
+      payload.intent = agentIntent.value.trim()
+    }
+
+    const res = await dispatcherOrdersApi.confirmWorkOrderByAgent(route.params.orderId, payload)
+    const createdCount = res.data?.created_work_orders?.length || 0
+    const unassignableCount = (res.data?.stages || []).filter((stage) => stage.status === 'unassignable').length
+    ElMessage.success(`Agent 已创建 ${createdCount} 张工单${unassignableCount ? `，${unassignableCount} 个阶段不可分配` : ''}`)
+    agentSuggestion.value = null
+    agentStageOverrides.value = {}
+    await fetchDetail()
+  } catch (error) {
+    ElMessage.error(resolveApiErrorMessage(error, 'Agent 确认派单失败'))
+  } finally {
+    agentConfirming.value = false
   }
 }
 
@@ -712,6 +924,79 @@ onMounted(fetchDetail)
 
 .create-form {
   max-width: 720px;
+}
+
+.agent-assistant {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-robot {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f3ff;
+}
+
+.agent-title,
+.agent-subtitle {
+  margin: 0;
+}
+
+.agent-title {
+  font-weight: 700;
+  color: #2b2721;
+}
+
+.agent-subtitle {
+  font-size: 12px;
+  color: #6a5338;
+}
+
+.agent-form {
+  max-width: 720px;
+}
+
+.agent-result {
+  border: 1px solid #eadfce;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.agent-stage-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.agent-stage-card {
+  border: 1px solid #f1e8da;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fffdfa;
+  display: grid;
+  gap: 8px;
+}
+
+.agent-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent-stage-title {
+  margin: 0;
+  font-weight: 600;
+  color: #4b3d2d;
 }
 
 .w-full {

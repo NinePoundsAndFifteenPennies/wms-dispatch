@@ -209,6 +209,8 @@ class DispatcherWorkerOptionResponse(BaseModel):
     skill_picking: int
     skill_staging: int
     skill_shipping: int
+    pending_count: int = 0
+    in_progress_count: int = 0
     active_work_order_count: int = 0
     active_work_order_limit: int = 5
 
@@ -239,6 +241,7 @@ class DispatcherCreateWorkOrderRequest(BaseModel):
     deadline: Optional[datetime] = None
     description: Optional[str] = None
     override_reason: Optional[str] = Field(default=None, max_length=500)
+    source: WorkOrderSource = "manual"
 
 
 class DispatcherWorkOrderPrecheckResponse(BaseModel):
@@ -352,6 +355,74 @@ class WorkerCompleteWorkOrderRequest(BaseModel):
     note: Optional[WorkerWorkOrderNotePayload] = None
 
 
+class DispatcherAgentSuggestWorkOrderRequest(BaseModel):
+    intent: Optional[str] = Field(default=None, max_length=500)
+    search_worker: Optional[str] = Field(default=None, max_length=100)
+
+
+class DispatcherAgentWorkerScoreResponse(BaseModel):
+    speedup: float
+    load: float
+    load_penalty: float
+    final_score: float
+
+
+class DispatcherAgentWorkerSummaryResponse(BaseModel):
+    worker_id: int
+    worker_name: str
+    worker_skill: int
+    pending_count: int
+    in_progress_count: int
+    active_work_order_count: int
+    active_work_order_limit: int
+
+
+class DispatcherAgentStageSuggestionResponse(BaseModel):
+    stage_id: int
+    stage_type: StageType
+    assignable: bool
+    reason: Optional[str] = None
+    required_skill_min: int
+    required_skill_max: int
+    has_risk: bool
+    risks: List[DispatcherWorkOrderRiskResponse] = Field(default_factory=list)
+    worker: Optional[DispatcherAgentWorkerSummaryResponse] = None
+    score: Optional[DispatcherAgentWorkerScoreResponse] = None
+    priority: Optional[OrderPriority] = None
+    suggested_description: Optional[str] = None
+
+
+class DispatcherAgentSuggestWorkOrderResponse(BaseModel):
+    order_id: int
+    stages: List[DispatcherAgentStageSuggestionResponse]
+
+
+class DispatcherAgentConfirmStageOverrideRequest(BaseModel):
+    stage_id: int
+    override_reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class DispatcherAgentConfirmWorkOrderRequest(BaseModel):
+    intent: Optional[str] = Field(default=None, max_length=500)
+    stage_overrides: List[DispatcherAgentConfirmStageOverrideRequest] = Field(default_factory=list)
+
+
+class DispatcherAgentConfirmStageResultResponse(BaseModel):
+    stage_id: int
+    stage_type: StageType
+    status: Literal["created", "unassignable"]
+    reason: Optional[str] = None
+    has_risk: bool = False
+    risks: List[DispatcherWorkOrderRiskResponse] = Field(default_factory=list)
+    work_order_id: Optional[int] = None
+
+
+class DispatcherAgentConfirmWorkOrderResponse(BaseModel):
+    order_id: int
+    created_work_orders: List[DispatcherOrderWorkOrderResponse] = Field(default_factory=list)
+    stages: List[DispatcherAgentConfirmStageResultResponse] = Field(default_factory=list)
+
+
 class DispatcherTransferCreateRequest(BaseModel):
     from_warehouse_id: int
     review_dispatcher_id: int
@@ -425,7 +496,6 @@ class DispatcherTransferResponse(BaseModel):
     description: Optional[str] = None
     rejection_reason: Optional[str] = None
     source: Literal["manual", "agent"]
-    agent_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     approved_at: Optional[datetime] = None

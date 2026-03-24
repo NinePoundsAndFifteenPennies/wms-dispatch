@@ -285,8 +285,7 @@ class DispatcherInventoryServiceMixin:
                             '，数量 ',
                             COALESCE(CAST(t.qty AS TEXT), '-'),
                             CASE WHEN NULLIF(t.rejection_reason, '') IS NOT NULL THEN CONCAT('；驳回：', t.rejection_reason) ELSE '' END,
-                            CASE WHEN NULLIF(t.description, '') IS NOT NULL THEN CONCAT('；说明：', t.description) ELSE '' END,
-                            CASE WHEN NULLIF(t.agent_reason, '') IS NOT NULL THEN CONCAT('；AI建议：', t.agent_reason) ELSE '' END
+                            CASE WHEN NULLIF(t.description, '') IS NOT NULL THEN CONCAT('；说明：', t.description) ELSE '' END
                         )
                         WHEN im.related_type = 'inbound_record' THEN CONCAT(
                             '入库 #',
@@ -313,7 +312,6 @@ class DispatcherInventoryServiceMixin:
                             NULLIF(st.reason, ''),
                             NULLIF(t.rejection_reason, ''),
                             NULLIF(t.description, ''),
-                            NULLIF(t.agent_reason, ''),
                             NULLIF(o.cancellation_reason, ''),
                             NULLIF(o.description, '')
                         )

@@ -6,6 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from modules.auth.dependencies import get_current_user_required
 from modules.dispatcher.dependencies import get_dispatcher_service
 from modules.dispatcher.schemas import (
+    DispatcherAgentConfirmWorkOrderResponse,
+    DispatcherAgentConfirmWorkOrderRequest,
+    DispatcherAgentSuggestWorkOrderRequest,
+    DispatcherAgentSuggestWorkOrderResponse,
     DispatcherCancelOrderRequest,
     DispatcherInboundRecordListResponse,
     DispatcherInboundRecordResponse,
@@ -33,8 +37,6 @@ from modules.dispatcher.schemas import (
     DispatcherWarehouseInventoryResponse,
 )
 from modules.dispatcher.services import DispatcherService
-
-
 router = APIRouter(prefix="/dispatcher", tags=["Dispatcher"])
 
 
@@ -246,6 +248,34 @@ async def precheck_order_work_order(
         user_id=current_user.get("id"),
         stage_id=payload.stage_id,
         worker_id=payload.worker_id,
+    )
+
+
+@router.post("/agent/orders/{order_id}/work-orders/suggest", response_model=DispatcherAgentSuggestWorkOrderResponse)
+async def suggest_order_work_order_by_agent(
+    order_id: int,
+    payload: DispatcherAgentSuggestWorkOrderRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.suggest_work_order_by_agent(
+        order_id=order_id,
+        user_id=current_user.get("id"),
+        payload=payload,
+    )
+
+
+@router.post("/agent/orders/{order_id}/work-orders/confirm", response_model=DispatcherAgentConfirmWorkOrderResponse)
+async def confirm_order_work_order_by_agent(
+    order_id: int,
+    payload: DispatcherAgentConfirmWorkOrderRequest,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.confirm_agent_work_order(
+        order_id=order_id,
+        user_id=current_user.get("id"),
+        payload=payload,
     )
 
 

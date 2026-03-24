@@ -2,11 +2,13 @@ import logging
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from api.router import router as api_router
 from modules.auth.dependencies import inject_current_user_from_token
+from modules.shared.config import settings
 from modules.shared.response import failure, success
 from modules.shared.storage import RESOURCES_ROOT, ensure_resource_dirs
 
@@ -14,6 +16,14 @@ app = FastAPI(
     title='WMS Dispatch API',
     version='0.1.0',
     description='Warehouse dispatch backend APIs.',
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 ensure_resource_dirs()

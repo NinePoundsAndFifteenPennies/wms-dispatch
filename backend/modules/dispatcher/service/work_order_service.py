@@ -68,12 +68,16 @@ class DispatcherWorkOrderServiceMixin:
                     u.skill_picking,
                     u.skill_staging,
                     u.skill_shipping,
+                    COALESCE(wo.pending_count, 0)::INTEGER AS pending_count,
+                    COALESCE(wo.in_progress_count, 0)::INTEGER AS in_progress_count,
                     COALESCE(wo.active_work_order_count, 0)::INTEGER AS active_work_order_count,
                     CAST(:active_work_order_limit AS INTEGER) AS active_work_order_limit
                 FROM users u
                 LEFT JOIN (
                     SELECT
                         worker_id,
+                        COUNT(*) FILTER (WHERE status = 'pending')::INTEGER AS pending_count,
+                        COUNT(*) FILTER (WHERE status = 'in_progress')::INTEGER AS in_progress_count,
                         COUNT(*)::INTEGER AS active_work_order_count
                     FROM work_orders
                     WHERE status IN ('pending', 'in_progress')
@@ -313,7 +317,10 @@ class DispatcherWorkOrderServiceMixin:
         active_count_result = await self.session.execute(
             text(
                 """
-                SELECT COALESCE(COUNT(*), 0)::INTEGER
+                SELECT
+                    COALESCE(COUNT(*) FILTER (WHERE status = 'pending'), 0)::INTEGER AS pending_count,
+                    COALESCE(COUNT(*) FILTER (WHERE status = 'in_progress'), 0)::INTEGER AS in_progress_count,
+                    COALESCE(COUNT(*), 0)::INTEGER AS active_work_order_count
                 FROM work_orders
                 WHERE worker_id = :worker_id
                   AND status IN ('pending', 'in_progress')
@@ -321,7 +328,10 @@ class DispatcherWorkOrderServiceMixin:
             ),
             {"worker_id": worker_id},
         )
-        active_work_order_count = active_count_result.scalar_one() or 0
+        active_counts = active_count_result.mappings().first() or {}
+        pending_count = int(active_counts.get("pending_count", 0))
+        in_progress_count = int(active_counts.get("in_progress_count", 0))
+        active_work_order_count = int(active_counts.get("active_work_order_count", 0))
 
         risks = []
         if worker_skill < required_skill_max:
@@ -346,6 +356,8 @@ class DispatcherWorkOrderServiceMixin:
             "required_skill_min": required_skill_min,
             "required_skill_max": required_skill_max,
             "worker_skill": worker_skill,
+            "pending_count": pending_count,
+            "in_progress_count": in_progress_count,
             "active_work_order_count": active_work_order_count,
             "risks": risks,
             "skill_products": skill_products,
@@ -570,7 +582,7 @@ class DispatcherWorkOrderServiceMixin:
                         :priority,
                         :deadline,
                         :description,
-                        'manual',
+                        :source,
                         (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0),
                         (NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)
                     )
@@ -586,6 +598,7 @@ class DispatcherWorkOrderServiceMixin:
                     "priority": payload.priority,
                     "deadline": payload.deadline,
                     "description": description,
+                    "source": payload.source,
                 },
             )
             new_row = insert_result.mappings().first()
