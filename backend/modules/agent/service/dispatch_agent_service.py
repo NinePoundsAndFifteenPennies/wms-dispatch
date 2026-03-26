@@ -49,6 +49,12 @@ class DispatcherAgentServiceMixin:
         cleaned = "\n".join(lines).strip()
         return cleaned or None
 
+    @staticmethod
+    def _format_llm_refine_error_detail(error: Exception) -> str:
+        if isinstance(error, HTTPException):
+            return str(getattr(error, "detail", str(error)))
+        return f"AI 工单描述生成失败：{str(error)}"
+
     @classmethod
     def _build_guidance_text(
         cls,
@@ -316,6 +322,7 @@ class DispatcherAgentServiceMixin:
         refine_guidance: bool = True,
         require_llm_guidance: bool = False,
         llm_failure_as_unassignable: bool = False,
+        llm_failure_fallback_to_raw: bool = False,
     ) -> list[dict]:
         order_base = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
         if order_base["status"] != "in_progress":
@@ -501,12 +508,17 @@ class DispatcherAgentServiceMixin:
             for (suggestion_idx, raw_guidance, stage_type), result in zip(pending_refinements, refine_results):
                 if isinstance(result, Exception):
                     if require_llm_guidance:
-                        if llm_failure_as_unassignable:
-                            detail = (
-                                str(getattr(result, "detail", str(result)))
-                                if isinstance(result, HTTPException)
-                                else f"AI 工单描述生成失败：{str(result)}"
+                        if llm_failure_fallback_to_raw:
+                            detail = self._format_llm_refine_error_detail(result)
+                            suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
+                            logger.warning(
+                                "LLM refinement unavailable in stage %s, fallback to raw guidance: %s",
+                                stage_type,
+                                detail,
                             )
+                            continue
+                        if llm_failure_as_unassignable:
+                            detail = self._format_llm_refine_error_detail(result)
                             suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
                             logger.warning(
                                 "LLM refinement unavailable in stage %s, fallback to raw guidance: %s",
@@ -669,6 +681,7 @@ class DispatcherAgentServiceMixin:
             refine_guidance=True,
             require_llm_guidance=True,
             llm_failure_as_unassignable=False,
+            llm_failure_fallback_to_raw=True,
         )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
