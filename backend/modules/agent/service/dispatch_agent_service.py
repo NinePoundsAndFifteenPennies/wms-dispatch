@@ -334,7 +334,7 @@ class DispatcherAgentServiceMixin:
         if strict:
             error_summary = "；".join(errors[:3])
             raise HTTPException(
-                status_code=504,
+                status_code=502,
                 detail=(
                     f"AI 工单描述生成失败，已尝试模型：{', '.join(model_candidates)}"
                     + (f"；失败摘要：{error_summary}" if error_summary else "")
