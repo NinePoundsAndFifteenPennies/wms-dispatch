@@ -392,9 +392,18 @@ class DispatcherAgentStageSuggestionResponse(BaseModel):
     suggested_description: Optional[str] = None
 
 
+class DispatcherAgentWorkflowTraceItemResponse(BaseModel):
+    timestamp: str
+    stage_type: Optional[StageType] = None
+    model: Optional[str] = None
+    status: str
+    detail: Optional[str] = None
+
+
 class DispatcherAgentSuggestWorkOrderResponse(BaseModel):
     order_id: int
     stages: List[DispatcherAgentStageSuggestionResponse]
+    llm_workflow_trace: List[DispatcherAgentWorkflowTraceItemResponse] = Field(default_factory=list)
 
 
 class DispatcherAgentConfirmStageOverrideRequest(BaseModel):

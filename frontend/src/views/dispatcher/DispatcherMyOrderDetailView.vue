@@ -162,6 +162,9 @@
             <el-form label-width="100px" class="agent-form">
               <el-form-item>
                 <el-button type="success" :loading="agentConfirming" @click="handleAgentConfirm">确认并创建工单</el-button>
+                <el-button plain :disabled="!agentWorkflowTrace.length" @click="agentWorkflowVisible = true">
+                  查看模型工作流
+                </el-button>
               </el-form-item>
             </el-form>
           </div>
@@ -336,6 +339,25 @@
         <el-button type="warning" :loading="creatingWorkOrder" @click="submitCreateWorkOrderWithOverride">确认强制派单</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="agentWorkflowVisible" title="模型调用工作流" width="760px">
+      <el-table :data="agentWorkflowTrace" size="small" border max-height="420">
+        <el-table-column prop="timestamp" label="时间" min-width="200" />
+        <el-table-column label="阶段" width="120">
+          <template #default="{ row }">{{ row.stage_type ? stageText(row.stage_type) : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="model" label="模型" min-width="180" />
+        <el-table-column label="状态" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="workflowStatusTagType(row.status)">{{ workflowStatusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="detail" label="说明" min-width="220" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="agentWorkflowVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -372,6 +394,7 @@ const agentConfirming = ref(false)
 const agentIntent = ref('')
 const agentSuggestion = ref(null)
 const agentStageOverrides = ref({})
+const agentWorkflowVisible = ref(false)
 
 const createForm = ref({
   stage_id: null,
@@ -458,6 +481,10 @@ const agentAssignableStages = computed(() => {
   return agentSuggestionStages.value.filter((stage) => stage.assignable)
 })
 
+const agentWorkflowTrace = computed(() => {
+  return Array.isArray(agentSuggestion.value?.llm_workflow_trace) ? agentSuggestion.value.llm_workflow_trace : []
+})
+
 const agentDisabledReason = computed(() => {
   if (!detail.value || detail.value.status !== 'in_progress') {
     return '仅进行中订单可使用 Agent 派单助手'
@@ -484,6 +511,26 @@ function formatRiskMessage(risk) {
     worker_overload: '负载超限：当前工人在途工单已达上限，建议分配给其他工人或填写强制派单原因。',
   }
   return map[risk.code] || fallback
+}
+
+function workflowStatusText(status) {
+  return {
+    attempt: '尝试',
+    success: '成功',
+    failed: '失败',
+    provider_unavailable: '未配置',
+    no_model_candidates: '无模型',
+  }[status] || status
+}
+
+function workflowStatusTagType(status) {
+  return {
+    attempt: 'info',
+    success: 'success',
+    failed: 'danger',
+    provider_unavailable: 'warning',
+    no_model_candidates: 'warning',
+  }[status] || 'info'
 }
 
 function ensureValidWorkerSelection() {
@@ -545,6 +592,7 @@ async function handleAgentSuggest() {
     if (agentIntent.value.trim()) payload.intent = agentIntent.value.trim()
     const res = await dispatcherOrdersApi.suggestWorkOrderByAgent(route.params.orderId, payload)
     agentSuggestion.value = res.data
+    agentWorkflowVisible.value = false
     const overrides = {}
     for (const stage of Array.isArray(res.data?.stages) ? res.data.stages : []) {
       if (stage.assignable && stage.has_risk) {

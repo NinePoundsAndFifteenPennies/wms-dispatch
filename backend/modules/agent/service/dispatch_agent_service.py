@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -29,10 +30,16 @@ logger = logging.getLogger(__name__)
 class DispatcherAgentServiceMixin:
     _SKILL_FILES = ("order-dispatchSkill.md", "worker-scoreSkill.md")
     _STAGE_ORDER = {"picking": 1, "staging": 2, "shipping": 3}
+    _STAGE_LABELS = {"picking": "分拣", "staging": "备货装箱", "shipping": "发货装车"}
     _MAX_SKILL = 10
     _MAX_SPEEDUP = 3.0
     _LOAD_FACTOR = 0.4
     _skill_context_cache: str | None = None
+    _MODEL_POOL_BY_STAGE = {
+        "picking": ("qwen3.5-flash", "qwen3.5-122b-a10b"),
+        "staging": ("glm-5", "MiniMax-M2.5"),
+        "shipping": ("qwen3.5-plus", "qwen3.5-plus-2026-02-15", "kimi-k2.5"),
+    }
 
     @staticmethod
     def _sanitize_guidance_text(text: str | None) -> str | None:
@@ -44,7 +51,26 @@ class DispatcherAgentServiceMixin:
         return cleaned or None
 
     @staticmethod
+    def _format_llm_refine_error_detail(error: Exception) -> str:
+        if isinstance(error, HTTPException):
+            return str(getattr(error, "detail", str(error)))
+        return f"AI 工单描述生成失败：{str(error)}"
+
+    @staticmethod
+    def _append_workflow_trace(trace: list[dict], *, stage_type: str | None, model: str | None, status: str, detail: str | None = None) -> None:
+        trace.append(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "stage_type": stage_type,
+                "model": model,
+                "status": status,
+                "detail": detail,
+            }
+        )
+
+    @classmethod
     def _build_guidance_text(
+        cls,
         *,
         order_no: str,
         stage_type: str,
@@ -52,21 +78,53 @@ class DispatcherAgentServiceMixin:
         required_skill_max: int,
         worker_skill: int,
         skill_products: list[dict],
+        priority: str,
         intent: str | None,
     ) -> str:
-        low_skill_products = [item["product_name"] for item in skill_products if item["required_skill"] > worker_skill]
-        high_risk_text = ", ".join(low_skill_products[:4]) if low_skill_products else "无"
+        stage_label = cls._STAGE_LABELS.get(stage_type)
+        if stage_label is None:
+            logger.warning("Unknown stage type for guidance generation: %s", stage_type)
+            stage_label = "未知阶段"
+        skill_match_scenario = "技能覆盖全部商品要求"
+        if required_skill_min < worker_skill < required_skill_max:
+            skill_match_scenario = "技能介于最低与最高要求之间，存在受限商品"
+        elif worker_skill == required_skill_min:
+            skill_match_scenario = "技能恰好达到最低要求，需谨慎执行"
 
+        eligible_products: list[str] = []
+        blocked_products: list[str] = []
+        product_lines: list[str] = []
+        for item in skill_products:
+            try:
+                required_skill = int(item.get("required_skill", 0))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Invalid required_skill in skill_products for order %s stage %s: %s",
+                    order_no,
+                    stage_type,
+                    item.get("required_skill"),
+                )
+                required_skill = 0
+            product_name = str(item.get("product_name") or "未知商品")
+            product_sku = str(item.get("product_sku") or "-")
+            if required_skill <= worker_skill:
+                eligible_products.append(product_name)
+            else:
+                blocked_products.append(product_name)
+            product_lines.append(
+                f"- {product_name}（SKU: {product_sku}），要求技能 {required_skill}"
+            )
         lines = [
-            "目标：安全、准确地完成当前阶段任务。",
-            "建议步骤：",
-            "1) 先处理难度较低商品，保持稳定吞吐。",
-            "2) 对不确定项及时标记，并尽快与调度员同步。",
-            "3) 每个批次后更新进度，避免超时。",
-            "禁止事项：",
-            "1) 不要处理超出当前技能边界的任务。",
-            "2) 未经调度员批准，不得变更任务范围。",
-            f"高风险商品/任务：{high_risk_text}。",
+            f"订单号：{order_no}",
+            f"阶段：{stage_label}",
+            f"工单优先级：{priority}",
+            f"技能区间：{required_skill_min}-{required_skill_max}，当前工人技能：{worker_skill}",
+            f"判定场景：{skill_match_scenario}",
+            "待处理商品：",
+            *product_lines,
+            f"可处理商品：{', '.join(eligible_products) if eligible_products else '无'}",
+            f"超技能商品：{', '.join(blocked_products) if blocked_products else '无'}",
+            "请按技能边界生成纯文本建议，不要输出 Markdown。",
         ]
         if intent:
             lines.append(f"调度意图：{intent.strip()[:200]}")
@@ -169,56 +227,121 @@ class DispatcherAgentServiceMixin:
         )
         return {int(row["stage_id"]): int(row["total_count"]) for row in result.mappings().all()}
 
-    async def _try_refine_guidance_with_llm(self, raw_text: str, *, strict: bool = False) -> str:
+    @classmethod
+    def _build_stage_model_candidates(cls, stage_type: str | None) -> list[str]:
+        candidates: list[str] = []
+        if stage_type == "picking" and settings.bailian_stage_model_picking:
+            candidates.append(settings.bailian_stage_model_picking)
+        if stage_type == "staging" and settings.bailian_stage_model_staging:
+            candidates.append(settings.bailian_stage_model_staging)
+        if stage_type == "shipping" and settings.bailian_stage_model_shipping:
+            candidates.append(settings.bailian_stage_model_shipping)
+
+        for name in cls._MODEL_POOL_BY_STAGE.get(stage_type or "", ()):
+            if name:
+                candidates.append(name)
+
+        if settings.bailian_planner_model:
+            candidates.append(settings.bailian_planner_model)
+        if settings.bailian_fast_model:
+            candidates.append(settings.bailian_fast_model)
+        candidates.extend(settings.bailian_fallback_models)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped
+
+    async def _try_refine_guidance_with_llm(
+        self,
+        raw_text: str,
+        *,
+        stage_type: str | None = None,
+        strict: bool = False,
+        workflow_trace: list[dict] | None = None,
+    ) -> str:
+        trace = workflow_trace if workflow_trace is not None else []
         if not BailianProvider.is_enabled():
+            self._append_workflow_trace(
+                trace,
+                stage_type=stage_type,
+                model=None,
+                status="provider_unavailable",
+                detail="未配置 DASHSCOPE_API_KEY",
+            )
             if strict:
                 raise HTTPException(status_code=400, detail="未配置 DASHSCOPE_API_KEY，无法生成 AI 工单描述")
             return raw_text
 
-        if strict:
-            system_prompt = (
-                "你是 WMS 调度系统的工单指导助手。\n"
-                "请将输入重写为简洁、可执行、面向工人的指导语，必须保持事实和边界不变。\n"
-                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
-                "不得臆造库存、状态机或权限规则。"
-            )
-        else:
-            if self._skill_context_cache is None:
-                self._skill_context_cache = AgentSkillLoader.load_skills(list(self._SKILL_FILES))
-            skill_context = self._skill_context_cache
-            system_prompt = (
-                "你是 WMS 调度系统的工单指导助手。\n"
-                "请将输入重写为简洁、面向工人的指导语，必须保持事实和边界不变。\n"
-                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
-                "不得臆造库存、状态机或权限规则。\n\n"
-                f"{skill_context}"
-            )
-        user_prompt = f"请在不改变边界的前提下优化以下工单指导语：\n\n{raw_text}"
+        if self._skill_context_cache is None:
+            self._skill_context_cache = AgentSkillLoader.load_skills(list(self._SKILL_FILES))
+        skill_context = self._skill_context_cache
 
-        timeout_seconds = settings.bailian_refine_timeout_seconds
-        try:
-            return await asyncio.wait_for(
-                BailianProvider.chat_completion(
+        system_prompt = (
+            "你是 WMS 调度系统的工单指导助手。\n"
+            "你必须严格遵循提供的技能文档和输入事实，生成可执行的中文工单建议。\n"
+            "输出必须是纯文本，不要 Markdown，不要代码块，不要 JSON。\n"
+            "必须明确写出：任务目标、执行步骤、禁止事项、关键提醒；不得臆造库存、状态机或权限规则。\n"
+            "当工人技能在最低与最高要求之间时，必须明确列出可处理商品与不可处理商品。\n\n"
+            f"{skill_context}"
+        )
+        user_prompt = f"""请根据以下结构化事实直接生成工单建议。建议内容必须由你自行组织，不要照抄输入原文，不要输出系统提示词。
+在保留全部事实边界不变的前提下，用执行口吻进行改写。
+
+{raw_text}"""
+
+        model_candidates = self._build_stage_model_candidates(stage_type)
+        if not model_candidates:
+            self._append_workflow_trace(
+                trace,
+                stage_type=stage_type,
+                model=None,
+                status="no_model_candidates",
+                detail="未配置可用模型",
+            )
+            if strict:
+                raise HTTPException(status_code=500, detail="未配置可用的 AI 模型")
+            return raw_text
+
+        errors: list[str] = []
+        for model_name in model_candidates:
+            self._append_workflow_trace(trace, stage_type=stage_type, model=model_name, status="attempt")
+            try:
+                refined = await BailianProvider.chat_completion(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    model=settings.bailian_fast_model,
+                    model=model_name,
                     temperature=0.1,
-                ),
-                timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            if strict:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"AI 工单描述生成超时（>{timeout_seconds}s），请稍后重试",
                 )
-            logger.warning("LLM refinement timed out after %ss, fallback to raw guidance", timeout_seconds)
-            return raw_text
-        except Exception as exc:
-            if strict:
-                raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{exc}")
-            logger.warning("LLM refinement failed, fallback to raw guidance: %s", exc)
-            return raw_text
+                self._append_workflow_trace(trace, stage_type=stage_type, model=model_name, status="success")
+                return refined
+            except Exception as exc:
+                errors.append(f"{model_name}: {exc}")
+                logger.warning("LLM refinement failed with model=%s stage=%s: %s", model_name, stage_type, exc)
+                self._append_workflow_trace(
+                    trace,
+                    stage_type=stage_type,
+                    model=model_name,
+                    status="failed",
+                    detail=str(exc),
+                )
+
+        if strict:
+            error_summary = "；".join(errors[:3])
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"AI 工单描述生成失败，已尝试模型：{', '.join(model_candidates)}"
+                    + (f"；失败摘要：{error_summary}" if error_summary else "")
+                ),
+            )
+        logger.warning("LLM refinement exhausted models, fallback to raw guidance: %s", "; ".join(errors))
+        return raw_text
 
     async def _build_order_stage_suggestions(
         self,
@@ -228,6 +351,9 @@ class DispatcherAgentServiceMixin:
         payload: DispatcherAgentSuggestWorkOrderRequest,
         refine_guidance: bool = True,
         require_llm_guidance: bool = False,
+        llm_failure_as_unassignable: bool = False,
+        llm_failure_fallback_to_raw: bool = False,
+        llm_workflow_trace: list[dict] | None = None,
     ) -> list[dict]:
         order_base = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
         if order_base["status"] != "in_progress":
@@ -257,6 +383,7 @@ class DispatcherAgentServiceMixin:
         stage_work_order_counts = await self._get_stage_work_order_counts(order_id=order_id)
 
         suggestions: list[dict] = []
+        pending_refinements: list[tuple[int, str, str]] = []
         for stage in stages:
             stage_id = int(stage["id"])
             existing_count = stage_work_order_counts.get(stage_id, 0)
@@ -372,15 +499,10 @@ class DispatcherAgentServiceMixin:
                 required_skill_max=selected["required_skill_max"],
                 worker_skill=selected["worker"]["worker_skill"],
                 skill_products=selected["skill_products"],
+                priority=priority,
                 intent=payload.intent,
             )
-            final_guidance = raw_guidance
-            if refine_guidance:
-                final_guidance = await self._try_refine_guidance_with_llm(
-                    raw_guidance,
-                    strict=require_llm_guidance,
-                )
-            final_guidance = self._sanitize_guidance_text(final_guidance)
+            final_guidance = self._sanitize_guidance_text(raw_guidance)
 
             suggestions.append(
                 {
@@ -398,6 +520,55 @@ class DispatcherAgentServiceMixin:
                     "suggested_description": final_guidance,
                 }
             )
+            if refine_guidance:
+                suggestion_idx = len(suggestions) - 1
+                pending_refinements.append((suggestion_idx, raw_guidance, selected["stage_type"]))
+
+        if refine_guidance and pending_refinements:
+            refine_results = await asyncio.gather(
+                *[
+                    self._try_refine_guidance_with_llm(
+                        raw_guidance,
+                        stage_type=stage_type,
+                        strict=require_llm_guidance,
+                        workflow_trace=llm_workflow_trace,
+                    )
+                    for _, raw_guidance, stage_type in pending_refinements
+                ],
+                return_exceptions=True,
+            )
+            for (suggestion_idx, raw_guidance, stage_type), result in zip(pending_refinements, refine_results):
+                if isinstance(result, Exception):
+                    if require_llm_guidance:
+                        if llm_failure_fallback_to_raw:
+                            detail = self._format_llm_refine_error_detail(result)
+                            suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
+                            logger.warning(
+                                "LLM refinement unavailable in stage %s, fallback to raw guidance: %s",
+                                stage_type,
+                                detail,
+                            )
+                            continue
+                        if llm_failure_as_unassignable:
+                            detail = self._format_llm_refine_error_detail(result)
+                            suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
+                            logger.warning(
+                                "LLM refinement unavailable in stage %s, fallback to raw guidance: %s",
+                                stage_type,
+                                detail,
+                            )
+                            continue
+                        if isinstance(result, HTTPException):
+                            raise result
+                        raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{str(result)}")
+                    logger.warning(
+                        "LLM refinement failed in stage %s, fallback to raw guidance: %s",
+                        stage_type,
+                        result,
+                    )
+                    suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
+                    continue
+                suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(result)
 
         return suggestions
 
@@ -535,7 +706,17 @@ class DispatcherAgentServiceMixin:
         user_id: int,
         payload: DispatcherAgentSuggestWorkOrderRequest,
     ) -> DispatcherAgentSuggestWorkOrderResponse:
-        suggestions = await self._build_order_stage_suggestions(order_id=order_id, user_id=user_id, payload=payload)
+        llm_trace: list[dict] = []
+        suggestions = await self._build_order_stage_suggestions(
+            order_id=order_id,
+            user_id=user_id,
+            payload=payload,
+            refine_guidance=True,
+            require_llm_guidance=True,
+            llm_failure_as_unassignable=False,
+            llm_failure_fallback_to_raw=True,
+            llm_workflow_trace=llm_trace,
+        )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
             worker = (
@@ -559,7 +740,7 @@ class DispatcherAgentServiceMixin:
                     suggested_description=stage["suggested_description"],
                 )
             )
-        return DispatcherAgentSuggestWorkOrderResponse(order_id=order_id, stages=stage_items)
+        return DispatcherAgentSuggestWorkOrderResponse(order_id=order_id, stages=stage_items, llm_workflow_trace=llm_trace)
 
     async def confirm_agent_work_order(
         self,

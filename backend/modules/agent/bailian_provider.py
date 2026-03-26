@@ -32,7 +32,7 @@ class BailianProvider:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=settings.bailian_timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=None) as client:
                 response = await client.post(
                     endpoint,
                     json=payload,
