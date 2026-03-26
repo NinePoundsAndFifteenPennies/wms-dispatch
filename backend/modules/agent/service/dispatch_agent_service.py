@@ -34,6 +34,11 @@ class DispatcherAgentServiceMixin:
     _MAX_SPEEDUP = 3.0
     _LOAD_FACTOR = 0.4
     _skill_context_cache: str | None = None
+    _MODEL_POOL_BY_STAGE = {
+        "picking": ("qwen3.5-flash", "qwen3.5-122b-a10b"),
+        "staging": ("glm-5", "MiniMax-M2.5"),
+        "shipping": ("qwen3.5-plus", "qwen3.5-plus-2026-02-15", "kimi-k2.5"),
+    }
 
     @staticmethod
     def _sanitize_guidance_text(text: str | None) -> str | None:
@@ -203,7 +208,37 @@ class DispatcherAgentServiceMixin:
         )
         return {int(row["stage_id"]): int(row["total_count"]) for row in result.mappings().all()}
 
-    async def _try_refine_guidance_with_llm(self, raw_text: str, *, strict: bool = False) -> str:
+    @classmethod
+    def _build_stage_model_candidates(cls, stage_type: str | None) -> list[str]:
+        candidates: list[str] = []
+        if stage_type == "picking" and settings.bailian_stage_model_picking:
+            candidates.append(settings.bailian_stage_model_picking)
+        if stage_type == "staging" and settings.bailian_stage_model_staging:
+            candidates.append(settings.bailian_stage_model_staging)
+        if stage_type == "shipping" and settings.bailian_stage_model_shipping:
+            candidates.append(settings.bailian_stage_model_shipping)
+
+        for name in cls._MODEL_POOL_BY_STAGE.get(stage_type or "", ()):
+            if name:
+                candidates.append(name)
+
+        if settings.bailian_planner_model:
+            candidates.append(settings.bailian_planner_model)
+        if settings.bailian_fast_model:
+            candidates.append(settings.bailian_fast_model)
+        candidates.extend(settings.bailian_fallback_models)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped
+
+    async def _try_refine_guidance_with_llm(self, raw_text: str, *, stage_type: str | None = None, strict: bool = False) -> str:
         if not BailianProvider.is_enabled():
             if strict:
                 raise HTTPException(status_code=400, detail="未配置 DASHSCOPE_API_KEY，无法生成 AI 工单描述")
@@ -226,30 +261,51 @@ class DispatcherAgentServiceMixin:
 
 {raw_text}"""
 
-        timeout_seconds = settings.bailian_refine_timeout_seconds
-        try:
-            return await asyncio.wait_for(
-                BailianProvider.chat_completion(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    model=settings.bailian_planner_model,
-                    temperature=0.1,
-                ),
-                timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
+        total_timeout = settings.bailian_refine_timeout_seconds
+        per_attempt_timeout = settings.bailian_refine_attempt_timeout_seconds
+        max_attempts = settings.bailian_refine_max_model_attempts
+        model_candidates = self._build_stage_model_candidates(stage_type)
+        if not model_candidates:
             if strict:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"AI 工单描述生成超时（>{timeout_seconds}s），请稍后重试",
+                raise HTTPException(status_code=500, detail="未配置可用的 AI 模型")
+            return raw_text
+
+        errors: list[str] = []
+        started_at = asyncio.get_running_loop().time()
+
+        for index, model_name in enumerate(model_candidates, start=1):
+            if index > max_attempts:
+                break
+            elapsed = asyncio.get_running_loop().time() - started_at
+            remain = total_timeout - elapsed
+            if remain <= 0:
+                errors.append("overall timeout reached")
+                break
+            timeout_for_this_attempt = min(per_attempt_timeout, remain)
+            try:
+                return await asyncio.wait_for(
+                    BailianProvider.chat_completion(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        model=model_name,
+                        temperature=0.1,
+                    ),
+                    timeout=timeout_for_this_attempt,
                 )
-            logger.warning("LLM refinement timed out after %ss, fallback to raw guidance", timeout_seconds)
-            return raw_text
-        except Exception as exc:
-            if strict:
-                raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{exc}")
-            logger.warning("LLM refinement failed, fallback to raw guidance: %s", exc)
-            return raw_text
+            except asyncio.TimeoutError:
+                errors.append(f"{model_name}: timeout>{timeout_for_this_attempt:.2f}s")
+                logger.warning("LLM refinement timeout with model=%s stage=%s", model_name, stage_type)
+            except Exception as exc:
+                errors.append(f"{model_name}: {exc}")
+                logger.warning("LLM refinement failed with model=%s stage=%s: %s", model_name, stage_type, exc)
+
+        if strict:
+            raise HTTPException(
+                status_code=504,
+                detail=f"AI 工单描述生成超时或失败，已尝试模型：{', '.join(model_candidates[:max_attempts])}",
+            )
+        logger.warning("LLM refinement exhausted models, fallback to raw guidance: %s", "; ".join(errors))
+        return raw_text
 
     async def _build_order_stage_suggestions(
         self,
@@ -410,6 +466,7 @@ class DispatcherAgentServiceMixin:
             if refine_guidance:
                 final_guidance = await self._try_refine_guidance_with_llm(
                     raw_guidance,
+                    stage_type=selected["stage_type"],
                     strict=require_llm_guidance,
                 )
             final_guidance = self._sanitize_guidance_text(final_guidance)

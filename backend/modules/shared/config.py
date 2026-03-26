@@ -20,6 +20,15 @@ class Settings:
     bailian_fast_model: str = os.getenv('BAILIAN_FAST_MODEL', 'qwen3.5-flash').strip()
     bailian_timeout_seconds: int = int(os.getenv('BAILIAN_TIMEOUT_SECONDS', '20'))
     bailian_refine_timeout_seconds: int = int(os.getenv('BAILIAN_REFINE_TIMEOUT_SECONDS', '6'))
+    bailian_refine_attempt_timeout_seconds: int = int(os.getenv('BAILIAN_REFINE_ATTEMPT_TIMEOUT_SECONDS', '4'))
+    bailian_refine_max_model_attempts: int = int(os.getenv('BAILIAN_REFINE_MAX_MODEL_ATTEMPTS', '3'))
+    bailian_stage_model_picking: str = os.getenv('BAILIAN_STAGE_MODEL_PICKING', '').strip()
+    bailian_stage_model_staging: str = os.getenv('BAILIAN_STAGE_MODEL_STAGING', '').strip()
+    bailian_stage_model_shipping: str = os.getenv('BAILIAN_STAGE_MODEL_SHIPPING', '').strip()
+    bailian_fallback_models_raw: str = os.getenv(
+        'BAILIAN_FALLBACK_MODELS',
+        'glm-5,qwen3.5-plus-2026-02-15,qwen3.5-122b-a10b,MiniMax-M2.5,kimi-k2.5,qwen3.5-flash',
+    ).strip()
     cors_allow_origins_raw: str = os.getenv('CORS_ALLOW_ORIGINS', '*').strip()
 
     def __init__(self) -> None:
@@ -38,12 +47,23 @@ class Settings:
             raise RuntimeError('BAILIAN_TIMEOUT_SECONDS must be >= 1')
         if self.bailian_refine_timeout_seconds < 1:
             raise RuntimeError('BAILIAN_REFINE_TIMEOUT_SECONDS must be >= 1')
+        if self.bailian_refine_attempt_timeout_seconds < 1:
+            raise RuntimeError('BAILIAN_REFINE_ATTEMPT_TIMEOUT_SECONDS must be >= 1')
+        if self.bailian_refine_max_model_attempts < 1:
+            raise RuntimeError('BAILIAN_REFINE_MAX_MODEL_ATTEMPTS must be >= 1')
 
     @property
     def cors_allow_origins(self) -> list[str]:
         raw = self.cors_allow_origins_raw
         if not raw:
             return ['*']
+        return [item.strip() for item in raw.split(',') if item.strip()]
+
+    @property
+    def bailian_fallback_models(self) -> list[str]:
+        raw = self.bailian_fallback_models_raw
+        if not raw:
+            return []
         return [item.strip() for item in raw.split(',') if item.strip()]
 
 
