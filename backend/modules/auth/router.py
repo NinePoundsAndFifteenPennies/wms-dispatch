@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from modules.auth.dependencies import (
     verify_password,
 )
 from modules.shared.response import success
+from modules.shared.notification_rules import run_system_notification_rules
 from modules.shared.storage import delete_resource_file_by_url, save_image_file
 
 router = APIRouter(prefix='/auth', tags=['auth'])
@@ -160,3 +161,116 @@ async def upload_my_avatar(
         delete_resource_file_by_url(old_avatar)
 
     return success(data=_to_user_payload(dict(updated)))
+
+
+@router.get('/me/notifications', summary='List current user notifications')
+async def list_my_notifications(
+    unread_only: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user=Depends(get_current_user_required),
+    session: AsyncSession = Depends(get_db_session),
+):
+    await run_system_notification_rules(session)
+
+    where = ["n.user_id = :user_id"]
+    params: dict[str, object] = {
+        "user_id": int(current_user['id']),
+        "limit": limit,
+    }
+    if unread_only:
+        where.append("n.is_read = false")
+
+    where_sql = " AND ".join(where)
+
+    rows_result = await session.execute(
+        text(
+            f"""
+            SELECT
+                n.id,
+                n.type,
+                n.title,
+                n.body,
+                n.related_id,
+                n.related_type,
+                n.is_read,
+                n.created_at
+            FROM notifications n
+            WHERE {where_sql}
+            ORDER BY n.created_at DESC, n.id DESC
+            LIMIT :limit
+            """
+        ),
+        params,
+    )
+    items = [dict(row) for row in rows_result.mappings().all()]
+
+    unread_count_result = await session.execute(
+        text(
+            """
+            SELECT COUNT(*)::INTEGER AS unread_count
+            FROM notifications
+            WHERE user_id = :user_id
+              AND is_read = false
+            """
+        ),
+        {"user_id": int(current_user['id'])},
+    )
+    unread_count = int(unread_count_result.scalar_one() or 0)
+
+    return success(
+        data={
+            "items": items,
+            "total": len(items),
+            "unread_count": unread_count,
+        }
+    )
+
+
+@router.patch('/me/notifications/{notification_id}/read', summary='Mark one notification as read')
+async def mark_notification_read(
+    notification_id: int,
+    current_user=Depends(get_current_user_required),
+    session: AsyncSession = Depends(get_db_session),
+):
+    result = await session.execute(
+        text(
+            """
+            UPDATE notifications
+            SET is_read = true
+            WHERE id = :id
+              AND user_id = :user_id
+            RETURNING id
+            """
+        ),
+        {
+            "id": notification_id,
+            "user_id": int(current_user['id']),
+        },
+    )
+    updated = result.mappings().first()
+    if not updated:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Notification not found')
+
+    await session.commit()
+    return success(data={"id": notification_id, "is_read": True})
+
+
+@router.patch('/me/notifications/read-all', summary='Mark all notifications as read')
+async def mark_all_notifications_read(
+    current_user=Depends(get_current_user_required),
+    session: AsyncSession = Depends(get_db_session),
+):
+    result = await session.execute(
+        text(
+            """
+            UPDATE notifications
+            SET is_read = true
+            WHERE user_id = :user_id
+              AND is_read = false
+            """
+        ),
+        {"user_id": int(current_user['id'])},
+    )
+    await session.commit()
+    return success(data={"updated": int(result.rowcount or 0)})

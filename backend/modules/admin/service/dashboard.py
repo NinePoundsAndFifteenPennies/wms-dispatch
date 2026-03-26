@@ -4,11 +4,15 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import text
 
+from modules.shared.notification_rules import run_system_notification_rules
+
 from .base import SYSTEM_TIMEZONE
 
 
 class DashboardServiceMixin:
     async def get_dashboard_overview(self):
+        await run_system_notification_rules(self.session)
+
         today_start = datetime.now(ZoneInfo(SYSTEM_TIMEZONE)).replace(
             hour=0,
             minute=0,

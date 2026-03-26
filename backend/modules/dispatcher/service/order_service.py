@@ -3,6 +3,8 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy import text
 
+from modules.shared.notification_rules import run_system_notification_rules
+
 
 class DispatcherOrderServiceMixin:
     def _build_order_filters(
@@ -39,6 +41,8 @@ class DispatcherOrderServiceMixin:
         search: Optional[str] = None,
         status_filter: Optional[str] = None,
     ):
+        await run_system_notification_rules(self.session)
+
         where_sql, params = self._build_order_filters(
             user_id=user_id,
             for_my_orders=for_my_orders,
@@ -97,6 +101,8 @@ class DispatcherOrderServiceMixin:
         return {"items": items, "total": total}
 
     async def get_dashboard_summary(self, user_id: int):
+        await run_system_notification_rules(self.session)
+
         user_result = await self.session.execute(
             text(
                 """

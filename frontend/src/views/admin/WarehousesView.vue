@@ -3,7 +3,7 @@
     <section class="toolbar">
       <div>
         <h3>仓库管理</h3>
-        <p>维护仓库基础信息与仓库图片（地图解析功能后续接入）。</p>
+        <p>维护仓库基础信息、仓库图片与地图定位。</p>
       </div>
       <div class="toolbar-actions">
         <el-input
@@ -25,6 +25,8 @@
         </el-button>
       </div>
     </section>
+
+    <WarehouseMapPanel :warehouses="warehouses" @marker-click="handleMapMarkerClick" />
 
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="warehouses" stripe @selection-change="onSelectionChange">
@@ -233,6 +235,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus, Search } from '@element-plus/icons-vue'
 import { warehousesApi } from '../../api/admin/warehouses'
+import WarehouseMapPanel from '../../components/admin/WarehouseMapPanel.vue'
 
 const warehouses = ref([])
 const router = useRouter()
@@ -351,6 +354,11 @@ function goInventory(row) {
     path: `/warehouses/${row.id}/inventory`,
     query: { name: row.name || '' },
   })
+}
+
+function handleMapMarkerClick(warehouse) {
+  if (!warehouse?.id) return
+  openDetailDialog(warehouse)
 }
 
 function resetForm() {

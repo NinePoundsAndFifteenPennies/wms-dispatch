@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from modules.dispatcher.schemas import DispatcherTransferCreateRequest
+from modules.shared.notification_rules import run_system_notification_rules
 
 
 class DispatcherTransferServiceMixin:
@@ -343,6 +344,8 @@ class DispatcherTransferServiceMixin:
         scope: str = "all",
         search: Optional[str] = None,
     ):
+        await run_system_notification_rules(self.session)
+
         user = await self._get_dispatcher_context(user_id=user_id)
         warehouse_id = user["warehouse_id"]
 
@@ -953,6 +956,8 @@ class DispatcherTransferServiceMixin:
         return await self.get_transfer_detail(transfer_id=transfer_id, user_id=user_id)
 
     async def list_pending_inbound_records(self, user_id: int):
+        await run_system_notification_rules(self.session)
+
         user = await self._get_dispatcher_context(user_id=user_id)
         rows_result = await self.session.execute(
             text(

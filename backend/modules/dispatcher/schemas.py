@@ -206,6 +206,7 @@ class DispatcherWorkerOptionResponse(BaseModel):
     id: int
     username: str
     email: str
+    avatar: Optional[str] = None
     skill_picking: int
     skill_staging: int
     skill_shipping: int
@@ -213,6 +214,36 @@ class DispatcherWorkerOptionResponse(BaseModel):
     in_progress_count: int = 0
     active_work_order_count: int = 0
     active_work_order_limit: int = 5
+
+
+class DispatcherWorkerActiveWorkOrderResponse(BaseModel):
+    id: int
+    order_id: int
+    order_no: str
+    customer_name: str
+    stage_id: int
+    stage_type: StageType
+    status: WorkOrderStatus
+    priority: OrderPriority
+    created_at: datetime
+    updated_at: datetime
+
+
+class DispatcherWorkerDetailResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    avatar: Optional[str] = None
+    phone: Optional[str] = None
+    description: Optional[str] = None
+    skill_picking: int
+    skill_staging: int
+    skill_shipping: int
+    pending_count: int = 0
+    in_progress_count: int = 0
+    active_work_order_count: int = 0
+    active_work_order_limit: int = 5
+    work_orders: List[DispatcherWorkerActiveWorkOrderResponse] = Field(default_factory=list)
 
 
 class DispatcherWorkOrderPrecheckRequest(BaseModel):
@@ -278,6 +309,7 @@ class DispatcherOrderWorkOrderResponse(BaseModel):
     stage_type: StageType
     worker_id: int
     worker_name: str
+    worker_avatar: Optional[str] = None
     dispatcher_id: int
     warehouse_id: int
     status: WorkOrderStatus

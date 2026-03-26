@@ -65,6 +65,7 @@ class DispatcherWorkOrderServiceMixin:
                     u.id,
                     u.username,
                     u.email,
+                    u.avatar,
                     u.skill_picking,
                     u.skill_staging,
                     u.skill_shipping,
@@ -93,6 +94,103 @@ class DispatcherWorkOrderServiceMixin:
             },
         )
         return [dict(row) for row in result.mappings().all()]
+
+    async def get_worker_detail(self, user_id: int, worker_id: int):
+        user_result = await self.session.execute(
+            text(
+                """
+                SELECT id, role, warehouse_id
+                FROM users
+                WHERE id = :user_id
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+        user = user_result.mappings().first()
+        if not user or user["role"] != "dispatcher":
+            raise HTTPException(status_code=403, detail="Access denied")
+        if not user["warehouse_id"]:
+            raise HTTPException(status_code=400, detail="Dispatcher warehouse is required")
+
+        worker_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    u.id,
+                    u.username,
+                    u.email,
+                    u.avatar,
+                    u.phone,
+                    u.description,
+                    u.skill_picking,
+                    u.skill_staging,
+                    u.skill_shipping,
+                    COALESCE(wo.pending_count, 0)::INTEGER AS pending_count,
+                    COALESCE(wo.in_progress_count, 0)::INTEGER AS in_progress_count,
+                    COALESCE(wo.active_work_order_count, 0)::INTEGER AS active_work_order_count,
+                    CAST(:active_work_order_limit AS INTEGER) AS active_work_order_limit
+                FROM users u
+                LEFT JOIN (
+                    SELECT
+                        worker_id,
+                        COUNT(*) FILTER (WHERE status = 'pending')::INTEGER AS pending_count,
+                        COUNT(*) FILTER (WHERE status = 'in_progress')::INTEGER AS in_progress_count,
+                        COUNT(*)::INTEGER AS active_work_order_count
+                    FROM work_orders
+                    WHERE status IN ('pending', 'in_progress')
+                    GROUP BY worker_id
+                ) wo ON wo.worker_id = u.id
+                WHERE u.id = :worker_id
+                  AND u.role = 'worker'
+                  AND u.warehouse_id = :warehouse_id
+                LIMIT 1
+                """
+            ),
+            {
+                "worker_id": worker_id,
+                "warehouse_id": user["warehouse_id"],
+                "active_work_order_limit": self.active_work_order_limit,
+            },
+        )
+        worker = worker_result.mappings().first()
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+
+        work_orders_result = await self.session.execute(
+            text(
+                """
+                SELECT
+                    wo.id,
+                    wo.order_id,
+                    o.order_no,
+                    c.name AS customer_name,
+                    wo.stage_id,
+                    os.stage_type,
+                    wo.status,
+                    wo.priority,
+                    wo.created_at,
+                    wo.updated_at
+                FROM work_orders wo
+                JOIN orders o ON o.id = wo.order_id
+                JOIN customers c ON c.id = o.customer_id
+                JOIN order_stages os ON os.id = wo.stage_id
+                WHERE wo.worker_id = :worker_id
+                  AND wo.warehouse_id = :warehouse_id
+                  AND wo.status IN ('pending', 'in_progress')
+                ORDER BY wo.status ASC, wo.updated_at DESC, wo.id DESC
+                """
+            ),
+            {
+                "worker_id": worker_id,
+                "warehouse_id": user["warehouse_id"],
+            },
+        )
+
+        return {
+            **dict(worker),
+            "work_orders": [dict(row) for row in work_orders_result.mappings().all()],
+        }
 
     async def list_work_orders(
         self,
@@ -437,6 +535,7 @@ class DispatcherWorkOrderServiceMixin:
                     os.stage_type,
                     wo.worker_id,
                     wu.username AS worker_name,
+                    wu.avatar AS worker_avatar,
                     wo.dispatcher_id,
                     wo.warehouse_id,
                     wo.status,

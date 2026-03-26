@@ -4,6 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.shared.notification_rules import notify_work_order_note_exception, run_system_notification_rules
+
 
 class WorkerService:
     def __init__(self, session: AsyncSession):
@@ -19,6 +21,8 @@ class WorkerService:
         stage_type: Optional[str] = None,
         priority: Optional[str] = None,
     ):
+        await run_system_notification_rules(self.session)
+
         where = ["wo.worker_id = :worker_id"]
         params = {
             "worker_id": user_id,
@@ -361,6 +365,13 @@ class WorkerService:
                         "content": note_content,
                         "created_by": user_id,
                     },
+                )
+
+                await notify_work_order_note_exception(
+                    self.session,
+                    work_order_id=work_order_id,
+                    note_type=note_type,
+                    note_content=note_content,
                 )
 
             await self._try_auto_complete_stage(stage_id=row["stage_id"], operated_by=user_id)

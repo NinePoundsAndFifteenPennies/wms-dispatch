@@ -61,10 +61,12 @@
           <h2>{{ pageTitle }}</h2>
         </div>
         <div class="header-actions">
-          <el-button type="warning" class="action-btn" plain>
-            <el-icon><Bell /></el-icon>
-            待办
-          </el-button>
+          <el-badge :value="unreadCount" :hidden="unreadCount <= 0" :max="99">
+            <el-button type="warning" class="action-btn" plain @click="openNotificationDrawer">
+              <el-icon><Bell /></el-icon>
+              待办
+            </el-button>
+          </el-badge>
           
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="operator">
@@ -90,6 +92,37 @@
         </section>
       </el-main>
     </el-container>
+
+    <el-drawer
+      v-model="notificationDrawerVisible"
+      title="异常通知"
+      size="420px"
+      @open="fetchNotifications"
+    >
+      <div class="notification-toolbar">
+        <span>未读 {{ unreadCount }}</span>
+        <el-button link type="primary" :disabled="unreadCount <= 0" @click="markAllNotificationsRead">全部标记已读</el-button>
+      </div>
+
+      <div v-loading="notificationLoading" class="notification-list">
+        <template v-if="notificationItems.length > 0">
+          <article
+            v-for="item in notificationItems"
+            :key="item.id"
+            class="notification-item"
+            :class="{ unread: !item.is_read }"
+            @click="markNotificationRead(item)"
+          >
+            <div class="notification-head">
+              <strong>{{ item.title }}</strong>
+              <small>{{ formatNotificationTime(item.created_at) }}</small>
+            </div>
+            <p>{{ item.body || '无详情' }}</p>
+          </article>
+        </template>
+        <el-empty v-else description="暂无异常通知" :image-size="96" />
+      </div>
+    </el-drawer>
   </el-container>
 </template>
 
@@ -99,6 +132,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/common/http'
+import { notificationsApi } from '../api/common/notifications'
 import { getAvatarUrl } from '../utils/avatar'
 
 const route = useRoute()
@@ -129,6 +163,10 @@ const pageTitle = computed(() => {
 })
 const backendStatus = ref('checking')
 let statusTimer = null
+const notificationDrawerVisible = ref(false)
+const notificationLoading = ref(false)
+const notificationItems = ref([])
+const unreadCount = ref(0)
 
 const backendStatusText = computed(() => {
   if (backendStatus.value === 'online') return '后端在线'
@@ -165,6 +203,53 @@ function logout() {
   router.push('/login')
 }
 
+function openNotificationDrawer() {
+  notificationDrawerVisible.value = true
+}
+
+async function fetchNotifications() {
+  notificationLoading.value = true
+  try {
+    const res = await notificationsApi.listMyNotifications({ limit: 80 })
+    const data = res.data?.data || {}
+    notificationItems.value = data.items || []
+    unreadCount.value = Number(data.unread_count || 0)
+  } catch {
+    notificationItems.value = []
+    unreadCount.value = 0
+  } finally {
+    notificationLoading.value = false
+  }
+}
+
+async function markNotificationRead(item) {
+  if (!item || item.is_read) return
+  try {
+    await notificationsApi.markNotificationRead(item.id)
+    item.is_read = true
+    unreadCount.value = Math.max(0, unreadCount.value - 1)
+  } catch {
+    // no-op, global interceptor already handles toast
+  }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await notificationsApi.markAllNotificationsRead()
+    notificationItems.value = notificationItems.value.map((item) => ({ ...item, is_read: true }))
+    unreadCount.value = 0
+  } catch {
+    // no-op, global interceptor already handles toast
+  }
+}
+
+function formatNotificationTime(value) {
+  if (!value) return '-'
+  const dt = new Date(value)
+  if (Number.isNaN(dt.getTime())) return '-'
+  return dt.toLocaleString('zh-CN', { hour12: false })
+}
+
 async function checkBackendStatus() {
   try {
     const response = await http.get('/health')
@@ -187,6 +272,7 @@ function scheduleNextHealthCheck() {
 
 onMounted(() => {
   checkBackendStatus()
+  fetchNotifications()
 })
 
 onUnmounted(() => {
@@ -403,5 +489,49 @@ onUnmounted(() => {
   padding: 18px;
   background: linear-gradient(180deg, #fcffff 0%, #f5f9fd 100%);
   box-shadow: 0 12px 34px rgba(42, 55, 71, 0.08);
+}
+
+.notification-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+
+.notification-item.unread {
+  border-color: #f3c67a;
+  background: #fff9ef;
+}
+
+.notification-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-head small {
+  color: #64748b;
+}
+
+.notification-item p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
 }
 </style>

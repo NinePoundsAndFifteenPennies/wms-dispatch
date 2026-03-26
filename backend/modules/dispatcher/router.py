@@ -34,6 +34,7 @@ from modules.dispatcher.schemas import (
     DispatcherWorkOrderPrecheckRequest,
     DispatcherWorkOrderPrecheckResponse,
     DispatcherWorkerOptionResponse,
+    DispatcherWorkerDetailResponse,
     DispatcherWarehouseInventoryResponse,
 )
 from modules.dispatcher.services import DispatcherService
@@ -186,6 +187,15 @@ async def list_dispatcher_workers(
     current_user=Depends(require_dispatcher_user),
 ):
     return await service.list_workers(user_id=current_user.get("id"), search=search)
+
+
+@router.get("/workers/{worker_id}", response_model=DispatcherWorkerDetailResponse)
+async def get_dispatcher_worker_detail(
+    worker_id: int,
+    service: DispatcherService = Depends(get_dispatcher_service),
+    current_user=Depends(require_dispatcher_user),
+):
+    return await service.get_worker_detail(user_id=current_user.get("id"), worker_id=worker_id)
 
 
 @router.get("/work-orders", response_model=DispatcherOrderWorkOrderListResponse)

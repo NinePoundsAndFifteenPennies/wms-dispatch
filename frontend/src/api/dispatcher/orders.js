@@ -33,6 +33,10 @@ export const dispatcherOrdersApi = {
     return http.get('/dispatcher/workers', { params })
   },
 
+  getWorkerDetail(workerId) {
+    return http.get(`/dispatcher/workers/${workerId}`)
+  },
+
   getWorkOrders(params) {
     return http.get('/dispatcher/work-orders', { params })
   },
