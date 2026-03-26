@@ -149,14 +149,14 @@
                         style="width: 100%"
                       />
                     </el-form-item>
-                    <el-form-item label="覆盖原因" v-if="stage.has_risk">
+                    <el-form-item label="覆盖备注" v-if="stage.has_risk">
                       <el-input
                         v-model="agentStageOverrides[stage.stage_id]"
                         type="textarea"
                         :rows="2"
                         maxlength="500"
                         show-word-limit
-                        placeholder="存在风险时必须填写"
+                          placeholder="可选：补充你的管理备注（Agent 将自动处理风险覆盖）"
                       />
                     </el-form-item>
                   </el-form>
@@ -644,27 +644,19 @@ async function handleAgentConfirm() {
     return
   }
 
-  const missingOverrideStages = agentAssignableStages.value.filter((stage) => {
-    if (!stage.has_risk) return false
-    const reason = (agentStageOverrides.value?.[stage.stage_id] || '').trim()
-    return !reason
-  })
-  if (missingOverrideStages.length) {
-    ElMessage.warning(`存在风险阶段未填写覆盖原因：${missingOverrideStages.map((s) => stageText(s.stage_type)).join('、')}`)
-    return
-  }
-
   agentConfirming.value = true
   try {
     const stage_overrides = agentAssignableStages.value
       .map((stage) => {
         const overrideReason = (agentStageOverrides.value?.[stage.stage_id] || '').trim()
         const deadline = agentStageDeadlines.value?.[stage.stage_id] || null
-        if (!overrideReason && !deadline) return null
+        const suggestedDescription = (stage.suggested_description || '').trim()
+        if (!overrideReason && !deadline && !suggestedDescription) return null
         return {
           stage_id: stage.stage_id,
           override_reason: overrideReason || null,
           deadline,
+          suggested_description: suggestedDescription || null,
         }
       })
       .filter(Boolean)

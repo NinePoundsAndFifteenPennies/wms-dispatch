@@ -442,6 +442,7 @@ class DispatcherAgentConfirmStageOverrideRequest(BaseModel):
     stage_id: int
     override_reason: Optional[str] = Field(default=None, max_length=500)
     deadline: Optional[datetime] = None
+    suggested_description: Optional[str] = Field(default=None, max_length=4000)
 
 
 class DispatcherAgentConfirmWorkOrderRequest(BaseModel):

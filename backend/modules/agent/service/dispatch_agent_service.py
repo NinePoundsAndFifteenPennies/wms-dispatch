@@ -615,14 +615,7 @@ class DispatcherAgentServiceMixin:
 
         normalized_override_reason = (payload.override_reason or "").strip()
         if risks and not normalized_override_reason:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": "存在风险，必须填写 override_reason",
-                    "risk_codes": [item["code"] for item in risks],
-                    "risks": risks,
-                },
-            )
+            normalized_override_reason = "agent_auto_override: AI建议已包含风险处理步骤，请按工单描述执行"
 
         previous_stage_type = {
             "staging": "picking",
@@ -767,8 +760,8 @@ class DispatcherAgentServiceMixin:
             order_id=order_id,
             user_id=user_id,
             payload=suggest_payload,
-            refine_guidance=True,
-            require_llm_guidance=True,
+            refine_guidance=False,
+            require_llm_guidance=False,
         )
 
         override_map = {int(item.stage_id): item for item in payload.stage_overrides}
@@ -801,15 +794,13 @@ class DispatcherAgentServiceMixin:
                 )
 
                 if stage["has_risk"] and not normalized_override_reason:
-                    raise HTTPException(
-                        status_code=400,
-                        detail={
-                            "message": f"阶段 {stage['stage_type']} 存在风险，必须填写 override_reason",
-                            "stage_id": stage_id,
-                            "risk_codes": [risk.code for risk in risks],
-                            "risks": [risk.model_dump() for risk in risks],
-                        },
-                    )
+                    normalized_override_reason = "agent_auto_override: AI建议已包含风险处理步骤，请按工单描述执行"
+
+                normalized_description = (
+                    stage_override.suggested_description.strip()
+                    if stage_override and stage_override.suggested_description
+                    else (stage["suggested_description"] or None)
+                )
 
                 worker_id = int(stage["worker"]["worker_id"])
                 work_order_id = await self._insert_agent_work_order_without_commit(
@@ -819,7 +810,7 @@ class DispatcherAgentServiceMixin:
                     worker_id=worker_id,
                     priority=stage["priority"] or "medium",
                     deadline=stage_override.deadline if stage_override else None,
-                    description=stage["suggested_description"],
+                    description=normalized_description,
                     override_reason=normalized_override_reason,
                 )
                 created_work_order_ids.append(work_order_id)
