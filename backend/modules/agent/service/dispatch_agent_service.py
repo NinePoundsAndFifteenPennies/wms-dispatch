@@ -507,20 +507,9 @@ class DispatcherAgentServiceMixin:
                                 if isinstance(result, HTTPException)
                                 else f"AI 工单描述生成失败：{str(result)}"
                             )
-                            suggestions[suggestion_idx].update(
-                                {
-                                    "assignable": False,
-                                    "reason": detail,
-                                    "has_risk": False,
-                                    "risks": [],
-                                    "worker": None,
-                                    "score": None,
-                                    "priority": None,
-                                    "suggested_description": None,
-                                }
-                            )
+                            suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
                             logger.warning(
-                                "LLM refinement unavailable in stage %s, mark as unassignable: %s",
+                                "LLM refinement unavailable in stage %s, fallback to raw guidance: %s",
                                 stage_type,
                                 detail,
                             )
@@ -679,7 +668,7 @@ class DispatcherAgentServiceMixin:
             payload=payload,
             refine_guidance=True,
             require_llm_guidance=True,
-            llm_failure_as_unassignable=True,
+            llm_failure_as_unassignable=False,
         )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
