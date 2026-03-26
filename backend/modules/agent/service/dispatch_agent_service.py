@@ -315,6 +315,7 @@ class DispatcherAgentServiceMixin:
         payload: DispatcherAgentSuggestWorkOrderRequest,
         refine_guidance: bool = True,
         require_llm_guidance: bool = False,
+        llm_failure_as_unassignable: bool = False,
     ) -> list[dict]:
         order_base = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
         if order_base["status"] != "in_progress":
@@ -500,6 +501,30 @@ class DispatcherAgentServiceMixin:
             for (suggestion_idx, raw_guidance, stage_type), result in zip(pending_refinements, refine_results):
                 if isinstance(result, Exception):
                     if require_llm_guidance:
+                        if llm_failure_as_unassignable:
+                            detail = (
+                                str(getattr(result, "detail", str(result)))
+                                if isinstance(result, HTTPException)
+                                else f"AI 工单描述生成失败：{str(result)}"
+                            )
+                            suggestions[suggestion_idx].update(
+                                {
+                                    "assignable": False,
+                                    "reason": detail,
+                                    "has_risk": False,
+                                    "risks": [],
+                                    "worker": None,
+                                    "score": None,
+                                    "priority": None,
+                                    "suggested_description": None,
+                                }
+                            )
+                            logger.warning(
+                                "LLM refinement unavailable in stage %s, mark as unassignable: %s",
+                                stage_type,
+                                detail,
+                            )
+                            continue
                         if isinstance(result, HTTPException):
                             raise result
                         raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{str(result)}")
@@ -654,6 +679,7 @@ class DispatcherAgentServiceMixin:
             payload=payload,
             refine_guidance=True,
             require_llm_guidance=True,
+            llm_failure_as_unassignable=True,
         )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
