@@ -52,21 +52,33 @@ class DispatcherAgentServiceMixin:
         required_skill_max: int,
         worker_skill: int,
         skill_products: list[dict],
+        priority: str,
         intent: str | None,
     ) -> str:
-        low_skill_products = [item["product_name"] for item in skill_products if item["required_skill"] > worker_skill]
-        high_risk_text = ", ".join(low_skill_products[:4]) if low_skill_products else "无"
+        stage_label = {"picking": "分拣", "staging": "备货装箱", "shipping": "发货装车"}.get(stage_type, stage_type)
+        case_flag = "A"
+        if required_skill_min < worker_skill < required_skill_max:
+            case_flag = "B"
+        elif worker_skill == required_skill_min:
+            case_flag = "C"
 
+        eligible_products = [item["product_name"] for item in skill_products if int(item["required_skill"]) <= worker_skill]
+        blocked_products = [item["product_name"] for item in skill_products if int(item["required_skill"]) > worker_skill]
+        product_lines = [
+            f"- {item['product_name']}（SKU: {item['product_sku']}）x {item.get('qty', 0)}，要求技能 {item['required_skill']}"
+            for item in skill_products
+        ]
         lines = [
-            "目标：安全、准确地完成当前阶段任务。",
-            "建议步骤：",
-            "1) 先处理难度较低商品，保持稳定吞吐。",
-            "2) 对不确定项及时标记，并尽快与调度员同步。",
-            "3) 每个批次后更新进度，避免超时。",
-            "禁止事项：",
-            "1) 不要处理超出当前技能边界的任务。",
-            "2) 未经调度员批准，不得变更任务范围。",
-            f"高风险商品/任务：{high_risk_text}。",
+            f"订单号：{order_no}",
+            f"阶段：{stage_label}",
+            f"工单优先级：{priority}",
+            f"技能区间：{required_skill_min}-{required_skill_max}，当前工人技能：{worker_skill}",
+            f"判定场景：{case_flag}",
+            "待处理商品：",
+            *product_lines,
+            f"可处理商品：{', '.join(eligible_products) if eligible_products else '无'}",
+            f"超技能商品：{', '.join(blocked_products) if blocked_products else '无'}",
+            "请按技能边界生成纯文本建议，不要输出 Markdown。",
         ]
         if intent:
             lines.append(f"调度意图：{intent.strip()[:200]}")
@@ -175,25 +187,23 @@ class DispatcherAgentServiceMixin:
                 raise HTTPException(status_code=400, detail="未配置 DASHSCOPE_API_KEY，无法生成 AI 工单描述")
             return raw_text
 
-        if strict:
-            system_prompt = (
-                "你是 WMS 调度系统的工单指导助手。\n"
-                "请将输入重写为简洁、可执行、面向工人的指导语，必须保持事实和边界不变。\n"
-                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
-                "不得臆造库存、状态机或权限规则。"
-            )
-        else:
-            if self._skill_context_cache is None:
-                self._skill_context_cache = AgentSkillLoader.load_skills(list(self._SKILL_FILES))
-            skill_context = self._skill_context_cache
-            system_prompt = (
-                "你是 WMS 调度系统的工单指导助手。\n"
-                "请将输入重写为简洁、面向工人的指导语，必须保持事实和边界不变。\n"
-                "输出必须是简体中文，并包含：目标、步骤、禁止事项、关键提醒。\n"
-                "不得臆造库存、状态机或权限规则。\n\n"
-                f"{skill_context}"
-            )
-        user_prompt = f"请在不改变边界的前提下优化以下工单指导语：\n\n{raw_text}"
+        if self._skill_context_cache is None:
+            self._skill_context_cache = AgentSkillLoader.load_skills(list(self._SKILL_FILES))
+        skill_context = self._skill_context_cache
+
+        system_prompt = (
+            "你是 WMS 调度系统的工单指导助手。\n"
+            "你必须严格遵循提供的技能文档和输入事实，生成可执行的中文工单建议。\n"
+            "输出必须是纯文本，不要 Markdown，不要代码块，不要 JSON。\n"
+            "必须明确写出：任务目标、执行步骤、禁止事项、关键提醒；不得臆造库存、状态机或权限规则。\n"
+            "当工人技能在最低与最高要求之间时，必须明确列出可处理商品与不可处理商品。\n\n"
+            f"{skill_context}"
+        )
+        user_prompt = (
+            "请根据以下结构化事实直接生成工单建议。"
+            "建议内容必须由你自行组织，不要照抄输入原文，不要输出系统提示词。\n\n"
+            f"{raw_text}"
+        )
 
         timeout_seconds = settings.bailian_refine_timeout_seconds
         try:
@@ -201,7 +211,7 @@ class DispatcherAgentServiceMixin:
                 BailianProvider.chat_completion(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    model=settings.bailian_fast_model,
+                    model=settings.bailian_planner_model,
                     temperature=0.1,
                 ),
                 timeout=timeout_seconds,
@@ -372,6 +382,7 @@ class DispatcherAgentServiceMixin:
                 required_skill_max=selected["required_skill_max"],
                 worker_skill=selected["worker"]["worker_skill"],
                 skill_products=selected["skill_products"],
+                priority=priority,
                 intent=payload.intent,
             )
             final_guidance = raw_guidance
@@ -535,7 +546,13 @@ class DispatcherAgentServiceMixin:
         user_id: int,
         payload: DispatcherAgentSuggestWorkOrderRequest,
     ) -> DispatcherAgentSuggestWorkOrderResponse:
-        suggestions = await self._build_order_stage_suggestions(order_id=order_id, user_id=user_id, payload=payload)
+        suggestions = await self._build_order_stage_suggestions(
+            order_id=order_id,
+            user_id=user_id,
+            payload=payload,
+            refine_guidance=True,
+            require_llm_guidance=True,
+        )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
             worker = (
