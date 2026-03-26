@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import HTTPException
@@ -5,6 +6,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.shared.notification_rules import notify_work_order_note_exception, run_system_notification_rules
+
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerService:
@@ -367,12 +371,20 @@ class WorkerService:
                     },
                 )
 
-                await notify_work_order_note_exception(
-                    self.session,
-                    work_order_id=work_order_id,
-                    note_type=note_type,
-                    note_content=note_content,
-                )
+                try:
+                    async with self.session.begin_nested():
+                        await notify_work_order_note_exception(
+                            self.session,
+                            work_order_id=work_order_id,
+                            note_type=note_type,
+                            note_content=note_content,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Failed to write exception notification for work_order_id=%s, note_type=%s",
+                        work_order_id,
+                        note_type,
+                    )
 
             await self._try_auto_complete_stage(stage_id=row["stage_id"], operated_by=user_id)
             await self.session.commit()

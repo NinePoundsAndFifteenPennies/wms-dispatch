@@ -51,13 +51,20 @@
         <section class="placeholder-card">
           <div class="exception-head">
             <p class="panel-label">异常中心</p>
-            <el-button link type="primary" :disabled="dispatcherNotificationUnread <= 0" @click="markAllDispatcherNotificationsRead">
-              全部已读
-            </el-button>
+            <div class="exception-actions">
+              <el-radio-group v-model="dispatcherNotificationFilter" size="small">
+                <el-radio-button label="all">全部</el-radio-button>
+                <el-radio-button label="unread">仅未读</el-radio-button>
+                <el-radio-button label="read">仅已读</el-radio-button>
+              </el-radio-group>
+              <el-button link type="primary" :disabled="dispatcherNotificationUnread <= 0" @click="markAllDispatcherNotificationsRead">
+                全部已读
+              </el-button>
+            </div>
           </div>
-          <div v-if="dispatcherNotifications.length > 0" class="exception-list">
+          <div v-if="filteredDispatcherNotifications.length > 0" class="exception-list">
             <button
-              v-for="notice in dispatcherNotifications"
+              v-for="notice in filteredDispatcherNotifications"
               :key="notice.id"
               type="button"
               class="exception-item"
@@ -69,7 +76,7 @@
               <small>{{ formatNotificationTime(notice.created_at) }}</small>
             </button>
           </div>
-          <el-empty v-else description="暂无异常通知" :image-size="72" />
+          <el-empty v-else :description="dispatcherNotificationEmptyText" :image-size="72" />
         </section>
       </aside>
 
@@ -233,10 +240,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { dispatcherOrdersApi } from '../../api/dispatcher/orders'
 import { notificationsApi } from '../../api/common/notifications'
+import { createNotificationSocket } from '../../api/common/notificationSocket'
+import { useAuthStore } from '../../stores/auth'
 import { getAvatarUrl } from '../../utils/avatar'
 import {
   compareCnDateDesc,
@@ -260,6 +269,11 @@ const workerDetailLoading = ref(false)
 const workerDetail = ref(null)
 const dispatcherNotifications = ref([])
 const dispatcherNotificationUnread = ref(0)
+const dispatcherNotificationFilter = ref('all')
+const authStore = useAuthStore()
+let notificationSocket = null
+let reconnectTimer = null
+let reconnectAttempts = 0
 
 const queueTabs = [
   { key: 'in_progress', label: '进行中订单', tone: 'blue' },
@@ -292,6 +306,22 @@ const emptyText = computed(() => {
   if (queueMode.value === 'pending') return '暂无待接单订单'
   if (queueMode.value === 'alert') return '暂无告警订单'
   return '暂无进行中订单'
+})
+
+const filteredDispatcherNotifications = computed(() => {
+  if (dispatcherNotificationFilter.value === 'unread') {
+    return dispatcherNotifications.value.filter((item) => !item.is_read)
+  }
+  if (dispatcherNotificationFilter.value === 'read') {
+    return dispatcherNotifications.value.filter((item) => item.is_read)
+  }
+  return dispatcherNotifications.value
+})
+
+const dispatcherNotificationEmptyText = computed(() => {
+  if (dispatcherNotificationFilter.value === 'unread') return '暂无未读异常通知'
+  if (dispatcherNotificationFilter.value === 'read') return '暂无已读异常通知'
+  return '暂无异常通知'
 })
 
 const selectedOrder = computed(() => {
@@ -655,7 +685,46 @@ function formatYuan(yuan) {
   return `${Number.isFinite(value) ? value.toFixed(2) : '0.00'}元`
 }
 
-onMounted(fetchWorkbench)
+function closeNotificationSocket() {
+  if (reconnectTimer) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  reconnectAttempts = 0
+  if (notificationSocket) {
+    notificationSocket.close()
+    notificationSocket = null
+  }
+}
+
+function connectNotificationSocket() {
+  closeNotificationSocket()
+  notificationSocket = createNotificationSocket({
+    token: authStore.token,
+    onState() {
+      fetchDispatcherNotifications()
+    },
+    onClose() {
+      if (!authStore.token) return
+      reconnectAttempts += 1
+      if (reconnectAttempts > 10) return
+      const delay = Math.min(2500 * reconnectAttempts, 15000)
+      reconnectTimer = window.setTimeout(connectNotificationSocket, delay)
+    },
+    onOpen() {
+      reconnectAttempts = 0
+    },
+  })
+}
+
+onMounted(() => {
+  fetchWorkbench()
+  connectNotificationSocket()
+})
+
+onUnmounted(() => {
+  closeNotificationSocket()
+})
 </script>
 
 <style scoped>
@@ -860,6 +929,12 @@ onMounted(fetchWorkbench)
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.exception-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .exception-list {

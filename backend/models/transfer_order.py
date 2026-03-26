@@ -32,7 +32,6 @@ class TransferOrder(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(8), nullable=False, default="manual")
-    agent_reason: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

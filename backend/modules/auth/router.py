@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+import asyncio
+import logging
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,13 +10,16 @@ from modules.auth.dependencies import (
     create_access_token,
     get_current_user_required,
     get_db_session,
+    parse_access_token,
     verify_password,
 )
+from modules.shared.database import AsyncSessionLocal
 from modules.shared.response import success
 from modules.shared.notification_rules import run_system_notification_rules
 from modules.shared.storage import delete_resource_file_by_url, save_image_file
 
 router = APIRouter(prefix='/auth', tags=['auth'])
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -170,7 +176,11 @@ async def list_my_notifications(
     current_user=Depends(get_current_user_required),
     session: AsyncSession = Depends(get_db_session),
 ):
-    await run_system_notification_rules(session)
+    try:
+        await run_system_notification_rules(session)
+    except Exception:
+        logger.exception('Failed to run notification sweep before listing notifications')
+        await session.rollback()
 
     where = ["n.user_id = :user_id"]
     params: dict[str, object] = {
@@ -223,6 +233,72 @@ async def list_my_notifications(
             "total": len(items),
             "unread_count": unread_count,
         }
+    )
+
+
+@router.websocket('/me/notifications/ws')
+async def notifications_ws(websocket: WebSocket):
+    auth_header = websocket.headers.get('Authorization', '')
+    query_token = websocket.query_params.get('token')
+    header_token = auth_header.removeprefix('Bearer ').strip() if auth_header.startswith('Bearer ') else ''
+    token = (query_token or header_token or '').strip()
+    parsed = parse_access_token(token)
+
+    if not parsed:
+        await websocket.close(code=1008, reason='Unauthorized')
+        return
+
+    user_id = int(parsed['id'])
+    await websocket.accept()
+
+    last_snapshot: tuple[int, int] | None = None
+
+    try:
+        while True:
+            async with AsyncSessionLocal() as ws_session:
+                snapshot_result = await ws_session.execute(
+                    text(
+                        """
+                        SELECT
+                            COALESCE(MAX(id), 0)::INTEGER AS latest_id,
+                            COUNT(*) FILTER (WHERE is_read = false)::INTEGER AS unread_count
+                        FROM notifications
+                        WHERE user_id = :user_id
+                        """
+                    ),
+                    {"user_id": user_id},
+                )
+                snapshot_row = snapshot_result.mappings().first() or {}
+
+            latest_id = int(snapshot_row.get('latest_id') or 0)
+            unread_count = int(snapshot_row.get('unread_count') or 0)
+            snapshot = (latest_id, unread_count)
+            if snapshot != last_snapshot:
+                await websocket.send_json(
+                    {
+                        'type': 'notification_state',
+                        'latest_id': latest_id,
+                        'unread_count': unread_count,
+                    }
+                )
+                last_snapshot = snapshot
+
+            await asyncio.sleep(3)
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        logger.exception('Notification websocket loop crashed for user_id=%s', user_id)
+        try:
+            await websocket.close(code=1011, reason='Server error')
+        except Exception:
+            pass
+
+
+@router.get('/me/notifications/ws', summary='Notification websocket requires upgrade')
+async def notifications_ws_http_fallback():
+    raise HTTPException(
+        status_code=status.HTTP_426_UPGRADE_REQUIRED,
+        detail='This endpoint is websocket-only. Use ws://.../api/auth/me/notifications/ws',
     )
 
 

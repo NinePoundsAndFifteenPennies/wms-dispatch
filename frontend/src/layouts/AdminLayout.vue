@@ -101,13 +101,20 @@
     >
       <div class="notification-toolbar">
         <span>未读 {{ unreadCount }}</span>
-        <el-button link type="primary" :disabled="unreadCount <= 0" @click="markAllNotificationsRead">全部标记已读</el-button>
+        <div class="notification-actions">
+          <el-radio-group v-model="notificationReadFilter" size="small">
+            <el-radio-button label="all">全部</el-radio-button>
+            <el-radio-button label="unread">仅未读</el-radio-button>
+            <el-radio-button label="read">仅已读</el-radio-button>
+          </el-radio-group>
+          <el-button link type="primary" :disabled="unreadCount <= 0" @click="markAllNotificationsRead">全部标记已读</el-button>
+        </div>
       </div>
 
       <div v-loading="notificationLoading" class="notification-list">
-        <template v-if="notificationItems.length > 0">
+        <template v-if="filteredNotificationItems.length > 0">
           <article
-            v-for="item in notificationItems"
+            v-for="item in filteredNotificationItems"
             :key="item.id"
             class="notification-item"
             :class="{ unread: !item.is_read }"
@@ -120,7 +127,7 @@
             <p>{{ item.body || '无详情' }}</p>
           </article>
         </template>
-        <el-empty v-else description="暂无异常通知" :image-size="96" />
+        <el-empty v-else :description="notificationEmptyText" :image-size="96" />
       </div>
     </el-drawer>
   </el-container>
@@ -133,6 +140,7 @@ import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Ticket
 import { useAuthStore } from '../stores/auth'
 import http from '../api/common/http'
 import { notificationsApi } from '../api/common/notifications'
+import { createNotificationSocket } from '../api/common/notificationSocket'
 import { getAvatarUrl } from '../utils/avatar'
 
 const route = useRoute()
@@ -163,10 +171,30 @@ const pageTitle = computed(() => {
 })
 const backendStatus = ref('checking')
 let statusTimer = null
+let notificationSocket = null
+let notificationReconnectTimer = null
+let notificationReconnectAttempts = 0
 const notificationDrawerVisible = ref(false)
 const notificationLoading = ref(false)
 const notificationItems = ref([])
 const unreadCount = ref(0)
+const notificationReadFilter = ref('all')
+
+const filteredNotificationItems = computed(() => {
+  if (notificationReadFilter.value === 'unread') {
+    return notificationItems.value.filter((item) => !item.is_read)
+  }
+  if (notificationReadFilter.value === 'read') {
+    return notificationItems.value.filter((item) => item.is_read)
+  }
+  return notificationItems.value
+})
+
+const notificationEmptyText = computed(() => {
+  if (notificationReadFilter.value === 'unread') return '暂无未读通知'
+  if (notificationReadFilter.value === 'read') return '暂无已读通知'
+  return '暂无异常通知'
+})
 
 const backendStatusText = computed(() => {
   if (backendStatus.value === 'online') return '后端在线'
@@ -205,6 +233,7 @@ function logout() {
 
 function openNotificationDrawer() {
   notificationDrawerVisible.value = true
+  fetchNotifications()
 }
 
 async function fetchNotifications() {
@@ -250,6 +279,41 @@ function formatNotificationTime(value) {
   return dt.toLocaleString('zh-CN', { hour12: false })
 }
 
+function closeNotificationSocket() {
+  if (notificationReconnectTimer) {
+    window.clearTimeout(notificationReconnectTimer)
+    notificationReconnectTimer = null
+  }
+  notificationReconnectAttempts = 0
+  if (notificationSocket) {
+    notificationSocket.close()
+    notificationSocket = null
+  }
+}
+
+function connectNotificationSocket() {
+  closeNotificationSocket()
+  notificationSocket = createNotificationSocket({
+    token: authStore.token,
+    onState(payload) {
+      unreadCount.value = Number(payload.unread_count || 0)
+      if (notificationDrawerVisible.value) {
+        fetchNotifications()
+      }
+    },
+    onClose() {
+      if (!authStore.token) return
+      notificationReconnectAttempts += 1
+      if (notificationReconnectAttempts > 10) return
+      const delay = Math.min(2500 * notificationReconnectAttempts, 15000)
+      notificationReconnectTimer = window.setTimeout(connectNotificationSocket, delay)
+    },
+    onOpen() {
+      notificationReconnectAttempts = 0
+    },
+  })
+}
+
 async function checkBackendStatus() {
   try {
     const response = await http.get('/health')
@@ -273,12 +337,14 @@ function scheduleNextHealthCheck() {
 onMounted(() => {
   checkBackendStatus()
   fetchNotifications()
+  connectNotificationSocket()
 })
 
 onUnmounted(() => {
   if (statusTimer) {
     window.clearTimeout(statusTimer)
   }
+  closeNotificationSocket()
 })
 </script>
 
@@ -498,6 +564,12 @@ onUnmounted(() => {
   margin-bottom: 10px;
   color: var(--ink-muted);
   font-size: 12px;
+}
+
+.notification-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .notification-list {

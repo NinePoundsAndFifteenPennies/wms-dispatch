@@ -44,6 +44,20 @@ def create_access_token(user: dict[str, Any]) -> str:
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=ALGORITHM)
 
 
+def parse_access_token(token: str) -> dict[str, Any] | None:
+    if not token:
+        return None
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get('sub')
+        if sub is None:
+            return None
+        return {'id': int(sub), 'role': payload.get('role'), 'username': payload.get('username')}
+    except (JWTError, ValueError):
+        return None
+
+
 async def fetch_user_by_id(session: AsyncSession, user_id: int):
     result = await session.execute(
         text(
@@ -120,11 +134,7 @@ async def inject_current_user_from_token(request: Request, call_next):
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         token = auth_header.removeprefix('Bearer ').strip()
-        try:
-            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-            sub = payload.get('sub')
-            if sub is not None:
-                request.state.current_user = {'id': int(sub), 'role': payload.get('role')}
-        except (JWTError, ValueError):
-            request.state.current_user = None
+        parsed = parse_access_token(token)
+        if parsed:
+            request.state.current_user = {'id': parsed['id'], 'role': parsed.get('role')}
     return await call_next(request)

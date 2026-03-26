@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from sqlalchemy import text
@@ -7,6 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 SYSTEM_TZ_SQL = "(NOW() AT TIME ZONE 'Asia/Shanghai')::timestamp(0)"
+logger = logging.getLogger(__name__)
+
+
+async def _run_rule_safely(session: AsyncSession, rule_name: str, handler) -> int:
+    try:
+        async with session.begin_nested():
+            return int(await handler(session) or 0)
+    except Exception:
+        logger.exception("Notification rule failed: %s", rule_name)
+        return 0
 
 
 async def run_system_notification_rules(session: AsyncSession) -> dict:
@@ -23,12 +34,32 @@ async def run_system_notification_rules(session: AsyncSession) -> dict:
         "work_order_deadline_notified": 0,
     }
 
-    stats["pending_acceptance_timeout_notified"] = await _notify_pending_acceptance_timeout(session)
-    stats["in_progress_timeout_reverted"] = await _revert_in_progress_without_work_orders(session)
-    stats["inbound_timeout_notified"] = await _notify_inbound_timeout(session)
-    stats["work_order_deadline_notified"] = await _notify_work_order_deadline_overdue(session)
+    stats["pending_acceptance_timeout_notified"] = await _run_rule_safely(
+        session,
+        "pending_acceptance_timeout",
+        _notify_pending_acceptance_timeout,
+    )
+    stats["in_progress_timeout_reverted"] = await _run_rule_safely(
+        session,
+        "in_progress_without_work_orders",
+        _revert_in_progress_without_work_orders,
+    )
+    stats["inbound_timeout_notified"] = await _run_rule_safely(
+        session,
+        "inbound_timeout",
+        _notify_inbound_timeout,
+    )
+    stats["work_order_deadline_notified"] = await _run_rule_safely(
+        session,
+        "work_order_deadline_overdue",
+        _notify_work_order_deadline_overdue,
+    )
 
-    await session.commit()
+    try:
+        await session.commit()
+    except Exception:
+        logger.exception("Commit failed after running notification rules")
+        await session.rollback()
     return stats
 
 
@@ -67,8 +98,8 @@ async def _notify_pending_acceptance_timeout(session: AsyncSession) -> int:
                     AND n.type = 'order_pending_acceptance_timeout'
                     AND n.related_type = 'order'
                     AND n.related_id = o.id
-                    AND n.is_read = false
               )
+                        ON CONFLICT DO NOTHING
             """
         )
     )
@@ -276,8 +307,8 @@ async def _revert_in_progress_without_work_orders(session: AsyncSession) -> int:
                         AND n.type = 'order_timeout_reverted'
                         AND n.related_type = 'order'
                         AND n.related_id = :order_id
-                        AND n.is_read = false
                   )
+                                ON CONFLICT DO NOTHING
                 """
             ),
             {
@@ -319,8 +350,8 @@ async def _revert_in_progress_without_work_orders(session: AsyncSession) -> int:
                             AND n.type = 'order_timeout_reverted'
                             AND n.related_type = 'order'
                             AND n.related_id = :order_id
-                            AND n.is_read = false
                       )
+                                        ON CONFLICT DO NOTHING
                     """
                 ),
                 {
@@ -370,8 +401,8 @@ async def _notify_inbound_timeout(session: AsyncSession) -> int:
                     AND n.type = 'inbound_timeout_pending_confirm'
                     AND n.related_type = 'inbound_record'
                     AND n.related_id = ir.id
-                    AND n.is_read = false
               )
+                        ON CONFLICT DO NOTHING
             """
         )
     )
@@ -414,8 +445,8 @@ async def _notify_work_order_deadline_overdue(session: AsyncSession) -> int:
                     AND n.type = 'work_order_deadline_overdue'
                     AND n.related_type = 'work_order'
                     AND n.related_id = wo.id
-                    AND n.is_read = false
               )
+                        ON CONFLICT DO NOTHING
             """
         )
     )
@@ -476,25 +507,25 @@ async def notify_work_order_note_exception(
             )
             SELECT
                 u.id,
-                :type,
-                :title,
-                :body,
-                :related_id,
+                                CAST(:type AS VARCHAR(32)),
+                                CAST(:title AS VARCHAR(256)),
+                                CAST(:body AS TEXT),
+                                CAST(:related_id AS INTEGER),
                 'work_order',
                 false,
                 {SYSTEM_TZ_SQL}
             FROM users u
-            WHERE u.id = :dispatcher_id
+                        WHERE u.id = CAST(:dispatcher_id AS INTEGER)
               AND u.is_active = true
               AND NOT EXISTS (
                   SELECT 1
                   FROM notifications n
                   WHERE n.user_id = u.id
-                    AND n.type = :type
+                                        AND n.type = CAST(:type AS VARCHAR(32))
                     AND n.related_type = 'work_order'
-                    AND n.related_id = :related_id
-                    AND n.is_read = false
+                                        AND n.related_id = CAST(:related_id AS INTEGER)
               )
+                        ON CONFLICT DO NOTHING
             """
         ),
         {
@@ -523,10 +554,10 @@ async def notify_work_order_note_exception(
                 )
                 SELECT
                     u.id,
-                    :type,
-                    :title,
-                    :body,
-                    :related_id,
+                    CAST(:type AS VARCHAR(32)),
+                    CAST(:title AS VARCHAR(256)),
+                    CAST(:body AS TEXT),
+                    CAST(:related_id AS INTEGER),
                     'work_order',
                     false,
                     {SYSTEM_TZ_SQL}
@@ -537,11 +568,11 @@ async def notify_work_order_note_exception(
                       SELECT 1
                       FROM notifications n
                       WHERE n.user_id = u.id
-                        AND n.type = :type
+                                                AND n.type = CAST(:type AS VARCHAR(32))
                         AND n.related_type = 'work_order'
-                        AND n.related_id = :related_id
-                        AND n.is_read = false
+                                                AND n.related_id = CAST(:related_id AS INTEGER)
                   )
+                                ON CONFLICT DO NOTHING
                 """
             ),
             {

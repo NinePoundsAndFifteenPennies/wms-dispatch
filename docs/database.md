@@ -1,4 +1,4 @@
-# 数据库设计文档 (极简重构版，不可变)
+﻿# 数据库设计文档 (极简重构版，不可变)
 
 ## 📊 数据库架构
 
@@ -47,8 +47,8 @@ resources/
 | description | TEXT | | 用户描述/备注 |
 | phone | VARCHAR(32) | | 联系电话 |
 | is_active | BOOLEAN | NOT NULL, DEFAULT true | 账户是否激活（软禁用） |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 最后修改时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 最后修改时间 |
 
 **关键约束**：
 - `role` 通过 CHECK 约束限制为 `'admin'`、`'dispatcher'`、`'worker'`
@@ -69,8 +69,8 @@ resources/
 | address | TEXT | | 送货地址 |
 | description | TEXT | | 客户备注 |
 | is_active | BOOLEAN | NOT NULL, DEFAULT true | 是否有效（软删除） |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 最后修改时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 最后修改时间 |
 
 ---
 
@@ -87,8 +87,8 @@ resources/
 | cover_image | VARCHAR(512) | | 仓库封面图路径 |
 | description | TEXT | | 仓库描述 |
 | is_active | BOOLEAN | NOT NULL, DEFAULT true | 是否有效（软删除） |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 ---
 
@@ -109,8 +109,8 @@ resources/
 | cover_image | VARCHAR(512) | | 产品图片路径 |
 | description | TEXT | | 产品描述 |
 | is_active | BOOLEAN | NOT NULL, DEFAULT true | 是否有效（软下架） |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 **约束**：`CHECK (req_skill_picking >= 0 AND req_skill_staging >= 0 AND req_skill_shipping >= 0)`
 
@@ -129,8 +129,8 @@ resources/
 | qty_locked | INTEGER | NOT NULL, DEFAULT 0 | 调拨软锁定量 |
 | qty_threshold | INTEGER | NOT NULL, DEFAULT 0 | 库存阈值 |
 | qty_available | INTEGER | GENERATED ALWAYS AS (qty_on_hand - qty_reserved - qty_locked) STORED | 可用库存（计算字段） |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 **约束**：
 - `UNIQUE (warehouse_id, product_id)`
@@ -169,7 +169,7 @@ resources/
 | related_type | VARCHAR(32) | | 关联资源类型（order / transfer_order / inbound_record / stocktake） |
 | related_id | INTEGER | | 关联资源ID |
 | operated_by | INTEGER | FK → users.id | 操作人 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
 
 **流水记录页面统计口径（展示层约定）**：
 - 趋势图与日节点统计只计算 `delta_on_hand != 0` 的记录（真实库存变化）。
@@ -194,7 +194,7 @@ resources/
 | after_on_hand | INTEGER | NOT NULL | 盘点后现存量 |
 | delta_on_hand | INTEGER | NOT NULL | 现存量变化 |
 | reason | TEXT | | 本次人工盘点调整原因 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 事件创建时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 事件创建时间 |
 
 ---
 
@@ -218,8 +218,8 @@ resources/
 | cancelled_at | TIMESTAMP | | 取消时间 |
 | cancelled_by | INTEGER | FK → users.id | 取消人 |
 | cancellation_reason | TEXT | | 取消原因 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 **补充说明（迁移）**：已通过迁移脚本将 `users/warehouses/products/customers/inventory/stocktakes/inventory_movements/orders` 既有时间数据按 `+8 hours` 换算，以统一为国区时间口径。
 
@@ -267,8 +267,8 @@ resources/
 | completed_at | TIMESTAMP | | 阶段完成时间 |
 | completed_by | INTEGER | FK → users.id | 阶段完成操作人 |
 | remark | TEXT | | 手动阶段完成备注 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 **约束**：`UNIQUE (order_id, stage_type)`
 
@@ -313,8 +313,8 @@ resources/
 | terminated_at | TIMESTAMP | | 终止时间 |
 | terminated_by | INTEGER | FK → users.id | 终止人 |
 | termination_reason | TEXT | | 终止原因 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 说明：`work_orders.assigned_at` 已移除，工单派发时间统一以 `created_at` 为准。
 
@@ -355,9 +355,8 @@ resources/
 | description | TEXT | | 调拨说明 |
 | rejection_reason | TEXT | | 驳回原因 |
 | source | VARCHAR(8) | NOT NULL, DEFAULT 'manual' | manual / agent |
-| agent_reason | TEXT | | AI建议理由 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 | approved_at | TIMESTAMP | | 审批时间 |
 | executed_at | TIMESTAMP | | 来源仓扣减完成时间 |
 | completed_at | TIMESTAMP | | 目标仓确认入库完成时间 |
@@ -379,8 +378,8 @@ resources/
 | expected_arrival_at | TIMESTAMP | | 预期到达时间 |
 | confirmed_by | INTEGER | FK → users.id | 确认入库人 |
 | confirmed_at | TIMESTAMP | | 确认入库时间 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 更新时间 |
 
 **约束**：`UNIQUE (transfer_order_id)`
 
@@ -398,7 +397,7 @@ resources/
 | related_id | INTEGER | | 关联资源ID |
 | related_type | VARCHAR(32) | | 关联资源类型 |
 | is_read | BOOLEAN | NOT NULL, DEFAULT false | 是否已读 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间（国区时间口径） |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT timezone('Asia/Shanghai', now()) | 创建时间 |
 
 ---
 
