@@ -344,6 +344,7 @@ class DispatcherAgentServiceMixin:
         stage_work_order_counts = await self._get_stage_work_order_counts(order_id=order_id)
 
         suggestions: list[dict] = []
+        pending_refinements: list[tuple[int, str, str]] = []
         for stage in stages:
             stage_id = int(stage["id"])
             existing_count = stage_work_order_counts.get(stage_id, 0)
@@ -462,14 +463,7 @@ class DispatcherAgentServiceMixin:
                 priority=priority,
                 intent=payload.intent,
             )
-            final_guidance = raw_guidance
-            if refine_guidance:
-                final_guidance = await self._try_refine_guidance_with_llm(
-                    raw_guidance,
-                    stage_type=selected["stage_type"],
-                    strict=require_llm_guidance,
-                )
-            final_guidance = self._sanitize_guidance_text(final_guidance)
+            final_guidance = self._sanitize_guidance_text(raw_guidance)
 
             suggestions.append(
                 {
@@ -487,6 +481,36 @@ class DispatcherAgentServiceMixin:
                     "suggested_description": final_guidance,
                 }
             )
+            if refine_guidance:
+                suggestion_idx = len(suggestions) - 1
+                pending_refinements.append((suggestion_idx, raw_guidance, selected["stage_type"]))
+
+        if refine_guidance and pending_refinements:
+            refine_results = await asyncio.gather(
+                *[
+                    self._try_refine_guidance_with_llm(
+                        raw_guidance,
+                        stage_type=stage_type,
+                        strict=require_llm_guidance,
+                    )
+                    for _, raw_guidance, stage_type in pending_refinements
+                ],
+                return_exceptions=True,
+            )
+            for (suggestion_idx, raw_guidance, stage_type), result in zip(pending_refinements, refine_results):
+                if isinstance(result, Exception):
+                    if require_llm_guidance:
+                        if isinstance(result, HTTPException):
+                            raise result
+                        raise HTTPException(status_code=502, detail=f"AI 工单描述生成失败：{str(result)}")
+                    logger.warning(
+                        "LLM refinement failed in stage %s, fallback to raw guidance: %s",
+                        stage_type,
+                        result,
+                    )
+                    suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(raw_guidance)
+                    continue
+                suggestions[suggestion_idx]["suggested_description"] = self._sanitize_guidance_text(result)
 
         return suggestions
 
