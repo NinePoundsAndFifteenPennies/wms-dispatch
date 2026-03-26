@@ -42,6 +42,10 @@
           <el-icon class="menu-icon"><Goods /></el-icon>
           产品管理
         </el-menu-item>
+        <el-menu-item v-if="authStore.hasRole('admin')" index="/reports">
+          <el-icon class="menu-icon"><DataAnalysis /></el-icon>
+          效率报告
+        </el-menu-item>
       </el-menu>
 
       <div class="status-panel">
@@ -136,7 +140,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Bell, Connection, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, DataAnalysis, Goods, House, List, OfficeBuilding, Tickets, TrendCharts, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/common/http'
 import { notificationsApi } from '../api/common/notifications'
@@ -160,6 +164,7 @@ const titleMap = {
   '/flow-records': '流水记录',
   '/customers': '客户管理',
   '/products': '产品管理',
+  '/reports': '效率报告',
 }
 
 const pageTitle = computed(() => {

@@ -1,6 +1,6 @@
 from decimal import Decimal
-from datetime import datetime
-from typing import Optional, List, Literal
+from datetime import date, datetime
+from typing import Any, Optional, List, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -489,3 +489,48 @@ class AdminDashboardOverviewResponse(BaseModel):
     warehouse_order_performance: List[DashboardWarehouseOrderPerformanceItemResponse]
     product_popularity: List[DashboardProductPopularityItemResponse]
     alerts: List[DashboardAlertItemResponse]
+
+
+class AdminReportGenerateRequest(BaseModel):
+    period_start: date
+    period_end: date
+    warehouse_id: Optional[int] = Field(default=None, ge=1)
+    include_llm_analysis: bool = True
+
+
+class AdminReportWorkflowTraceItemResponse(BaseModel):
+    timestamp: str
+    model: Optional[str] = None
+    status: str
+    detail: Optional[str] = None
+
+
+class AdminReportResponse(BaseModel):
+    id: int
+    generated_by: int
+    target_user_id: Optional[int] = None
+    period_start: date
+    period_end: date
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
+    stats_json: dict[str, Any] = Field(default_factory=dict)
+    content: str
+    content_format: Literal["markdown"] = "markdown"
+    llm_workflow_trace: List[AdminReportWorkflowTraceItemResponse] = Field(default_factory=list)
+    created_at: datetime
+
+
+class AdminReportListItemResponse(BaseModel):
+    id: int
+    generated_by: int
+    generated_by_name: Optional[str] = None
+    period_start: date
+    period_end: date
+    warehouse_id: Optional[int] = None
+    warehouse_name: Optional[str] = None
+    created_at: datetime
+
+
+class AdminReportListResponse(BaseModel):
+    items: List[AdminReportListItemResponse]
+    total: int

@@ -18,6 +18,7 @@ class Settings:
     bailian_base_url: str = os.getenv('BAILIAN_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1').strip()
     bailian_planner_model: str = os.getenv('BAILIAN_PLANNER_MODEL', 'qwen3.5-plus').strip()
     bailian_fast_model: str = os.getenv('BAILIAN_FAST_MODEL', 'qwen3.5-flash').strip()
+    bailian_report_model: str = os.getenv('BAILIAN_REPORT_MODEL', '').strip()
     bailian_stage_model_picking: str = os.getenv('BAILIAN_STAGE_MODEL_PICKING', '').strip()
     bailian_stage_model_staging: str = os.getenv('BAILIAN_STAGE_MODEL_STAGING', '').strip()
     bailian_stage_model_shipping: str = os.getenv('BAILIAN_STAGE_MODEL_SHIPPING', '').strip()

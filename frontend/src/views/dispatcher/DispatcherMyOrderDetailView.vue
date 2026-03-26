@@ -140,6 +140,15 @@
                         readonly
                       />
                     </el-form-item>
+                    <el-form-item label="阶段截止">
+                      <el-date-picker
+                        v-model="agentStageDeadlines[stage.stage_id]"
+                        type="datetime"
+                        value-format="YYYY-MM-DDTHH:mm:ss"
+                        placeholder="可选，建议设置阶段截止时间"
+                        style="width: 100%"
+                      />
+                    </el-form-item>
                     <el-form-item label="覆盖原因" v-if="stage.has_risk">
                       <el-input
                         v-model="agentStageOverrides[stage.stage_id]"
@@ -221,6 +230,15 @@
             <el-option label="中" value="medium" />
             <el-option label="低" value="low" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="截止时间">
+          <el-date-picker
+            v-model="createForm.deadline"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            placeholder="可选，留空表示不限时"
+            class="w-full"
+          />
         </el-form-item>
         <el-form-item label="任务备注" v-if="!assignmentPrecheck?.has_risk">
           <el-input v-model="createForm.description" type="textarea" :rows="2" placeholder="选填，说明执行要求" />
@@ -394,12 +412,14 @@ const agentConfirming = ref(false)
 const agentIntent = ref('')
 const agentSuggestion = ref(null)
 const agentStageOverrides = ref({})
+const agentStageDeadlines = ref({})
 const agentWorkflowVisible = ref(false)
 
 const createForm = ref({
   stage_id: null,
   worker_id: null,
   priority: 'medium',
+  deadline: null,
   description: '',
 })
 
@@ -566,6 +586,7 @@ async function fetchDetail() {
     if (!canUseAgentAssistant.value) {
       agentSuggestion.value = null
       agentStageOverrides.value = {}
+      agentStageDeadlines.value = {}
     }
   } catch (error) {
     ElMessage.error(error.response?.data?.message || '获取订单详情失败，请稍后重试')
@@ -594,12 +615,17 @@ async function handleAgentSuggest() {
     agentSuggestion.value = res.data
     agentWorkflowVisible.value = false
     const overrides = {}
+    const deadlines = {}
     for (const stage of Array.isArray(res.data?.stages) ? res.data.stages : []) {
       if (stage.assignable && stage.has_risk) {
         overrides[stage.stage_id] = ''
       }
+      if (stage.assignable) {
+        deadlines[stage.stage_id] = null
+      }
     }
     agentStageOverrides.value = overrides
+    agentStageDeadlines.value = deadlines
     ElMessage.success('Agent 建议已生成')
   } catch (error) {
     ElMessage.error(resolveApiErrorMessage(error, '生成 Agent 建议失败'))
@@ -631,11 +657,17 @@ async function handleAgentConfirm() {
   agentConfirming.value = true
   try {
     const stage_overrides = agentAssignableStages.value
-      .filter((stage) => stage.has_risk)
-      .map((stage) => ({
-        stage_id: stage.stage_id,
-        override_reason: (agentStageOverrides.value?.[stage.stage_id] || '').trim(),
-      }))
+      .map((stage) => {
+        const overrideReason = (agentStageOverrides.value?.[stage.stage_id] || '').trim()
+        const deadline = agentStageDeadlines.value?.[stage.stage_id] || null
+        if (!overrideReason && !deadline) return null
+        return {
+          stage_id: stage.stage_id,
+          override_reason: overrideReason || null,
+          deadline,
+        }
+      })
+      .filter(Boolean)
 
     const payload = {
       stage_overrides,
@@ -650,6 +682,7 @@ async function handleAgentConfirm() {
     ElMessage.success(`Agent 已创建 ${createdCount} 张工单${unassignableCount ? `，${unassignableCount} 个阶段不可分配` : ''}`)
     agentSuggestion.value = null
     agentStageOverrides.value = {}
+    agentStageDeadlines.value = {}
     await fetchDetail()
   } catch (error) {
     ElMessage.error(resolveApiErrorMessage(error, 'Agent 确认派单失败'))
@@ -716,6 +749,7 @@ function resetCreateForm() {
     stage_id: detail.value?.stages?.find((item) => item.status !== 'completed')?.id || null,
     worker_id: null,
     priority: 'medium',
+    deadline: null,
     description: '',
   }
   ensureValidWorkerSelection()
@@ -790,6 +824,7 @@ async function performCreateWorkOrder(forceReason = null) {
       stage_id: createForm.value.stage_id,
       worker_id: createForm.value.worker_id,
       priority: createForm.value.priority,
+      deadline: createForm.value.deadline || null,
       description: createForm.value.description || null,
       override_reason: forceReason,
     })

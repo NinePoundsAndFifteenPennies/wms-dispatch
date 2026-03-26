@@ -580,6 +580,7 @@ class DispatcherAgentServiceMixin:
         stage_id: int,
         worker_id: int,
         priority: str,
+        deadline: datetime | None,
         description: str | None,
         override_reason: str | None,
     ) -> int:
@@ -587,7 +588,7 @@ class DispatcherAgentServiceMixin:
             stage_id=stage_id,
             worker_id=worker_id,
             priority=priority,
-            deadline=None,
+            deadline=deadline,
             description=description,
             override_reason=override_reason,
             source="agent",
@@ -761,10 +762,7 @@ class DispatcherAgentServiceMixin:
             require_llm_guidance=True,
         )
 
-        override_map = {
-            int(item.stage_id): (item.override_reason.strip() if item.override_reason else None)
-            for item in payload.stage_overrides
-        }
+        override_map = {int(item.stage_id): item for item in payload.stage_overrides}
 
         created_work_order_ids: list[int] = []
         stage_results: list[DispatcherAgentConfirmStageResultResponse] = []
@@ -786,7 +784,14 @@ class DispatcherAgentServiceMixin:
                     continue
 
                 stage_id = int(stage["stage_id"])
-                if stage["has_risk"] and not override_map.get(stage_id):
+                stage_override = override_map.get(stage_id)
+                normalized_override_reason = (
+                    stage_override.override_reason.strip()
+                    if stage_override and stage_override.override_reason
+                    else None
+                )
+
+                if stage["has_risk"] and not normalized_override_reason:
                     raise HTTPException(
                         status_code=400,
                         detail={
@@ -804,8 +809,9 @@ class DispatcherAgentServiceMixin:
                     stage_id=stage_id,
                     worker_id=worker_id,
                     priority=stage["priority"] or "medium",
+                    deadline=stage_override.deadline if stage_override else None,
                     description=stage["suggested_description"],
-                    override_reason=override_map.get(stage_id),
+                    override_reason=normalized_override_reason,
                 )
                 created_work_order_ids.append(work_order_id)
                 stage_results.append(

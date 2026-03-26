@@ -1,6 +1,10 @@
 import http from '../common/http'
 
 export const warehousesApi = {
+  getWarehouseOptions() {
+    return http.get('/admin/warehouses/options')
+  },
+
   getWarehouses(params) {
     return http.get('/admin/warehouses/manage', { params })
   },

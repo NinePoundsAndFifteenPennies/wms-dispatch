@@ -9,6 +9,9 @@ from modules.admin.schemas import (
     AdminInventoryFlowTrendListResponse,
     AdminWarehouseDispatcherPerformanceResponse,
     AdminWorkOrderListResponse,
+    AdminReportGenerateRequest,
+    AdminReportListResponse,
+    AdminReportResponse,
     BatchDeleteRequest,
     CustomerCreate,
     OrderCreate,
@@ -51,6 +54,7 @@ customers_router = APIRouter(prefix="/admin/customers", tags=["Admin Customers"]
 products_router = APIRouter(prefix="/admin/products", tags=["Admin Products"], dependencies=admin_only)
 orders_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"], dependencies=admin_only)
 work_orders_router = APIRouter(prefix="/admin/work-orders", tags=["Admin Work Orders"], dependencies=admin_only)
+reports_router = APIRouter(prefix="/admin/reports", tags=["Admin Reports"], dependencies=admin_only)
 
 
 @router.get("/admin/dashboard-overview", response_model=AdminDashboardOverviewResponse, dependencies=admin_only)
@@ -499,9 +503,51 @@ async def list_work_orders(
         dispatcher_id=dispatcher_id,
     )
 
+
+@reports_router.post("/generate", response_model=AdminReportResponse)
+async def generate_report(
+    payload: AdminReportGenerateRequest,
+    service: AdminService = Depends(get_admin_service),
+    current_user=Depends(require_admin_user),
+):
+    return await service.generate_efficiency_report(
+        generated_by=current_user.get("id"),
+        period_start=payload.period_start,
+        period_end=payload.period_end,
+        warehouse_id=payload.warehouse_id,
+        include_llm_analysis=payload.include_llm_analysis,
+    )
+
+
+@reports_router.get("", response_model=AdminReportListResponse)
+async def list_reports(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    period_start: Optional[date] = None,
+    period_end: Optional[date] = None,
+    warehouse_id: Optional[int] = Query(default=None, ge=1),
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.list_reports(
+        page=page,
+        page_size=page_size,
+        period_start=period_start,
+        period_end=period_end,
+        warehouse_id=warehouse_id,
+    )
+
+
+@reports_router.get("/{report_id}", response_model=AdminReportResponse)
+async def get_report_detail(
+    report_id: int,
+    service: AdminService = Depends(get_admin_service),
+):
+    return await service.get_report_detail(report_id=report_id)
+
 router.include_router(users_router)
 router.include_router(warehouses_router)
 router.include_router(customers_router)
 router.include_router(products_router)
 router.include_router(orders_router)
 router.include_router(work_orders_router)
+router.include_router(reports_router)

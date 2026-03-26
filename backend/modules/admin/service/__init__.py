@@ -3,6 +3,7 @@ from .customers import CustomerServiceMixin
 from .dashboard import DashboardServiceMixin
 from .orders import OrderServiceMixin
 from .products import ProductServiceMixin
+from .reports import ReportAgentServiceMixin
 from .users import UserServiceMixin
 from .warehouses import WarehouseServiceMixin
 from .work_orders import WorkOrderServiceMixin
@@ -12,6 +13,7 @@ class AdminService(
     AdminServiceBase,
     WorkOrderServiceMixin,
     DashboardServiceMixin,
+    ReportAgentServiceMixin,
     UserServiceMixin,
     WarehouseServiceMixin,
     CustomerServiceMixin,
