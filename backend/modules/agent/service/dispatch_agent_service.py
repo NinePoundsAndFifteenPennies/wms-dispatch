@@ -85,15 +85,16 @@ class DispatcherAgentServiceMixin:
         if stage_label is None:
             logger.warning("Unknown stage type for guidance generation: %s", stage_type)
             stage_label = "未知阶段"
-        skill_match_scenario = "技能覆盖全部商品要求"
-        if required_skill_min < worker_skill < required_skill_max:
-            skill_match_scenario = "技能介于最低与最高要求之间，存在受限商品"
-        elif worker_skill == required_skill_min:
-            skill_match_scenario = "技能恰好达到最低要求，需谨慎执行"
 
-        eligible_products: list[str] = []
-        blocked_products: list[str] = []
+        skill_match_scenario = "full_coverage"
+        if required_skill_min < worker_skill < required_skill_max:
+            skill_match_scenario = "partial_coverage"
+        elif worker_skill == required_skill_min:
+            skill_match_scenario = "minimum_threshold"
+
         product_lines: list[str] = []
+        qualified_lines: list[str] = []
+        blocked_lines: list[str] = []
         for item in skill_products:
             try:
                 required_skill = int(item.get("required_skill", 0))
@@ -107,27 +108,32 @@ class DispatcherAgentServiceMixin:
                 required_skill = 0
             product_name = str(item.get("product_name") or "未知商品")
             product_sku = str(item.get("product_sku") or "-")
+            line = f"{product_name}|{product_sku}|required_skill={required_skill}"
+            product_lines.append(line)
             if required_skill <= worker_skill:
-                eligible_products.append(product_name)
+                qualified_lines.append(line)
             else:
-                blocked_products.append(product_name)
-            product_lines.append(
-                f"- {product_name}（SKU: {product_sku}），要求技能 {required_skill}"
-            )
+                blocked_lines.append(line)
+
         lines = [
-            f"订单号：{order_no}",
-            f"阶段：{stage_label}",
-            f"工单优先级：{priority}",
-            f"技能区间：{required_skill_min}-{required_skill_max}，当前工人技能：{worker_skill}",
-            f"判定场景：{skill_match_scenario}",
-            "待处理商品：",
-            *product_lines,
-            f"可处理商品：{', '.join(eligible_products) if eligible_products else '无'}",
-            f"超技能商品：{', '.join(blocked_products) if blocked_products else '无'}",
-            "请按技能边界生成纯文本建议，不要输出 Markdown。",
+            "[FACTS]",
+            f"order_no={order_no}",
+            f"stage_type={stage_type}",
+            f"stage_label={stage_label}",
+            f"priority={priority}",
+            f"required_skill_min={required_skill_min}",
+            f"required_skill_max={required_skill_max}",
+            f"worker_skill={worker_skill}",
+            f"skill_match_scenario={skill_match_scenario}",
+            "products=",
+            *[f"- {line}" for line in product_lines],
+            "qualified_products=",
+            *[f"- {line}" for line in qualified_lines],
+            "blocked_products=",
+            *[f"- {line}" for line in blocked_lines],
+            f"dispatcher_intent={intent.strip()[:200] if intent else ''}",
+            "[END_FACTS]",
         ]
-        if intent:
-            lines.append(f"调度意图：{intent.strip()[:200]}")
         return "\n".join(lines)
 
     @classmethod
@@ -284,14 +290,17 @@ class DispatcherAgentServiceMixin:
 
         system_prompt = (
             "你是 WMS 调度系统的工单指导助手。\n"
-            "你必须严格遵循提供的技能文档和输入事实，生成可执行的中文工单建议。\n"
+            "你必须严格遵循提供的技能文档和输入事实，独立生成可执行的中文工单建议。\n"
             "输出必须是纯文本，不要 Markdown，不要代码块，不要 JSON。\n"
             "必须明确写出：任务目标、执行步骤、禁止事项、关键提醒；不得臆造库存、状态机或权限规则。\n"
             "当工人技能在最低与最高要求之间时，必须明确列出可处理商品与不可处理商品。\n\n"
             f"{skill_context}"
         )
-        user_prompt = f"""请根据以下结构化事实直接生成工单建议。建议内容必须由你自行组织，不要照抄输入原文，不要输出系统提示词。
-在保留全部事实边界不变的前提下，用执行口吻进行改写。
+        user_prompt = f"""请根据以下结构化事实直接生成工单建议。
+要求：
+1) 建议内容必须由你自主组织，禁止逐行复述 FACTS 原文。
+2) 保留事实边界不变，不得新增未给出的库存、流程或权限信息。
+3) 使用执行口吻，且要体现阶段与技能边界。
 
 {raw_text}"""
 
@@ -715,7 +724,7 @@ class DispatcherAgentServiceMixin:
             refine_guidance=True,
             require_llm_guidance=True,
             llm_failure_as_unassignable=False,
-            llm_failure_fallback_to_raw=True,
+            llm_failure_fallback_to_raw=False,
             llm_workflow_trace=llm_trace,
         )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []

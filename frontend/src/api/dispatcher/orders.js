@@ -54,11 +54,15 @@ export const dispatcherOrdersApi = {
   },
 
   suggestWorkOrderByAgent(orderId, payload) {
-    return http.post(`/dispatcher/agent/orders/${orderId}/work-orders/suggest`, payload)
+    return http.post(`/dispatcher/agent/orders/${orderId}/work-orders/suggest`, payload, {
+      timeout: 0,
+    })
   },
 
   confirmWorkOrderByAgent(orderId, payload) {
-    return http.post(`/dispatcher/agent/orders/${orderId}/work-orders/confirm`, payload)
+    return http.post(`/dispatcher/agent/orders/${orderId}/work-orders/confirm`, payload, {
+      timeout: 0,
+    })
   },
 
   terminateWorkOrder(workOrderId, payload) {

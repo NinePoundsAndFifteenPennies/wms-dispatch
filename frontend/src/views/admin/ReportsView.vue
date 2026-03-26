@@ -89,6 +89,13 @@
 
         <el-card shadow="never" class="detail-card">
           <template #header>
+            <strong>图表看板</strong>
+          </template>
+          <ReportChartsPanel :stats="detail.stats_json" />
+        </el-card>
+
+        <el-card shadow="never" class="detail-card">
+          <template #header>
             <strong>阶段分析</strong>
           </template>
           <el-table :data="detail.stats_json?.by_stage || []" size="small" border>
@@ -144,6 +151,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { adminReportsApi } from '../../api/admin/reports'
 import { warehousesApi } from '../../api/admin/warehouses'
+import ReportChartsPanel from '../../components/admin/reports/ReportChartsPanel.vue'
 
 const loading = ref(false)
 const generating = ref(false)
