@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -54,6 +55,18 @@ class DispatcherAgentServiceMixin:
         if isinstance(error, HTTPException):
             return str(getattr(error, "detail", str(error)))
         return f"AI 工单描述生成失败：{str(error)}"
+
+    @staticmethod
+    def _append_workflow_trace(trace: list[dict], *, stage_type: str | None, model: str | None, status: str, detail: str | None = None) -> None:
+        trace.append(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "stage_type": stage_type,
+                "model": model,
+                "status": status,
+                "detail": detail,
+            }
+        )
 
     @classmethod
     def _build_guidance_text(
@@ -244,8 +257,23 @@ class DispatcherAgentServiceMixin:
             deduped.append(normalized)
         return deduped
 
-    async def _try_refine_guidance_with_llm(self, raw_text: str, *, stage_type: str | None = None, strict: bool = False) -> str:
+    async def _try_refine_guidance_with_llm(
+        self,
+        raw_text: str,
+        *,
+        stage_type: str | None = None,
+        strict: bool = False,
+        workflow_trace: list[dict] | None = None,
+    ) -> str:
+        trace = workflow_trace if workflow_trace is not None else []
         if not BailianProvider.is_enabled():
+            self._append_workflow_trace(
+                trace,
+                stage_type=stage_type,
+                model=None,
+                status="provider_unavailable",
+                detail="未配置 DASHSCOPE_API_KEY",
+            )
             if strict:
                 raise HTTPException(status_code=400, detail="未配置 DASHSCOPE_API_KEY，无法生成 AI 工单描述")
             return raw_text
@@ -267,48 +295,50 @@ class DispatcherAgentServiceMixin:
 
 {raw_text}"""
 
-        total_timeout = settings.bailian_refine_timeout_seconds
-        per_attempt_timeout = settings.bailian_refine_attempt_timeout_seconds
-        max_attempts = settings.bailian_refine_max_model_attempts
         model_candidates = self._build_stage_model_candidates(stage_type)
         if not model_candidates:
+            self._append_workflow_trace(
+                trace,
+                stage_type=stage_type,
+                model=None,
+                status="no_model_candidates",
+                detail="未配置可用模型",
+            )
             if strict:
                 raise HTTPException(status_code=500, detail="未配置可用的 AI 模型")
             return raw_text
 
         errors: list[str] = []
-        started_at = asyncio.get_running_loop().time()
-
-        for index, model_name in enumerate(model_candidates, start=1):
-            if index > max_attempts:
-                break
-            elapsed = asyncio.get_running_loop().time() - started_at
-            remain = total_timeout - elapsed
-            if remain <= 0:
-                errors.append("overall timeout reached")
-                break
-            timeout_for_this_attempt = min(per_attempt_timeout, remain)
+        for model_name in model_candidates:
+            self._append_workflow_trace(trace, stage_type=stage_type, model=model_name, status="attempt")
             try:
-                return await asyncio.wait_for(
-                    BailianProvider.chat_completion(
-                        system_prompt=system_prompt,
-                        user_prompt=user_prompt,
-                        model=model_name,
-                        temperature=0.1,
-                    ),
-                    timeout=timeout_for_this_attempt,
+                refined = await BailianProvider.chat_completion(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    model=model_name,
+                    temperature=0.1,
                 )
-            except asyncio.TimeoutError:
-                errors.append(f"{model_name}: timeout>{timeout_for_this_attempt:.2f}s")
-                logger.warning("LLM refinement timeout with model=%s stage=%s", model_name, stage_type)
+                self._append_workflow_trace(trace, stage_type=stage_type, model=model_name, status="success")
+                return refined
             except Exception as exc:
                 errors.append(f"{model_name}: {exc}")
                 logger.warning("LLM refinement failed with model=%s stage=%s: %s", model_name, stage_type, exc)
+                self._append_workflow_trace(
+                    trace,
+                    stage_type=stage_type,
+                    model=model_name,
+                    status="failed",
+                    detail=str(exc),
+                )
 
         if strict:
+            error_summary = "；".join(errors[:3])
             raise HTTPException(
                 status_code=504,
-                detail=f"AI 工单描述生成超时或失败，已尝试模型：{', '.join(model_candidates[:max_attempts])}",
+                detail=(
+                    f"AI 工单描述生成失败，已尝试模型：{', '.join(model_candidates)}"
+                    + (f"；失败摘要：{error_summary}" if error_summary else "")
+                ),
             )
         logger.warning("LLM refinement exhausted models, fallback to raw guidance: %s", "; ".join(errors))
         return raw_text
@@ -323,6 +353,7 @@ class DispatcherAgentServiceMixin:
         require_llm_guidance: bool = False,
         llm_failure_as_unassignable: bool = False,
         llm_failure_fallback_to_raw: bool = False,
+        llm_workflow_trace: list[dict] | None = None,
     ) -> list[dict]:
         order_base = await self._get_dispatcher_order(order_id=order_id, user_id=user_id)
         if order_base["status"] != "in_progress":
@@ -500,6 +531,7 @@ class DispatcherAgentServiceMixin:
                         raw_guidance,
                         stage_type=stage_type,
                         strict=require_llm_guidance,
+                        workflow_trace=llm_workflow_trace,
                     )
                     for _, raw_guidance, stage_type in pending_refinements
                 ],
@@ -674,6 +706,7 @@ class DispatcherAgentServiceMixin:
         user_id: int,
         payload: DispatcherAgentSuggestWorkOrderRequest,
     ) -> DispatcherAgentSuggestWorkOrderResponse:
+        llm_trace: list[dict] = []
         suggestions = await self._build_order_stage_suggestions(
             order_id=order_id,
             user_id=user_id,
@@ -682,6 +715,7 @@ class DispatcherAgentServiceMixin:
             require_llm_guidance=True,
             llm_failure_as_unassignable=False,
             llm_failure_fallback_to_raw=True,
+            llm_workflow_trace=llm_trace,
         )
         stage_items: list[DispatcherAgentStageSuggestionResponse] = []
         for stage in suggestions:
@@ -706,7 +740,7 @@ class DispatcherAgentServiceMixin:
                     suggested_description=stage["suggested_description"],
                 )
             )
-        return DispatcherAgentSuggestWorkOrderResponse(order_id=order_id, stages=stage_items)
+        return DispatcherAgentSuggestWorkOrderResponse(order_id=order_id, stages=stage_items, llm_workflow_trace=llm_trace)
 
     async def confirm_agent_work_order(
         self,
